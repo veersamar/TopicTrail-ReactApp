@@ -171,6 +171,30 @@ export const api = {
     }
   },
 
+  // ==================== MASTER DATA ENDPOINTS ====================
+  getMasterData: async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/masterdata/all`);
+      const data = await res.json();      
+      //return Array.isArray(data) ? data : [];
+      return data;
+    } catch (error) {
+      console.error('Error fetching master data:', error);
+      return [];
+    }
+  },
+
+  getMasterDataByType: async (type) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/masterdata/${type}`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error(`Error fetching master data for type ${type}:`, error);
+      return [];
+    }
+  },
+
   // ==================== COMMENT ENDPOINTS ====================
   getComments: async (token, articleId) => {
     try {

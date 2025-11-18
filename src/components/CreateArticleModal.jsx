@@ -7,6 +7,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
 
   // ========== STATE ==========
   const [formData, setFormData] = useState({
+    articleType: '',
     title: '',
     description: '',
     content: '',
@@ -18,6 +19,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
     tags: '',
   });
 
+  const [articleTypes, setArticleTypes] = useState([]);
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [intentTypes, setIntentTypes] = useState([]);
@@ -42,11 +44,23 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
     try {
       console.log('Starting to fetch all data...');
 
+      
+      // Fetch articleTypes
+      console.log('Fetching article types...');
+      const articleTypesData = await api.getCategories();      
+      if (articleTypesData){        
+        console.log('ArticleTypes received:', articleTypesData);
+        setArticleTypes(articleTypesData);
+      }
+
       // Fetch Categories
       console.log('Fetching categories...');
-      const categoriesData = await api.getCategories();
-      console.log('Categories received:', categoriesData);
-      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+      const categoriesData = await api.getCategories();      
+      if (categoriesData){        
+        console.log('Categories received:', categoriesData);
+        setCategories(categoriesData);
+      }
+      
 
       // Fetch Master Data for dropdowns
       console.log('Fetching master data...');
@@ -108,6 +122,10 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
   // ========== FORM VALIDATION ==========
   const validateForm = () => {
     const newErrors = {};
+
+    if (!formData.articleType) {
+      newErrors.articleType = 'Article Type is required';
+    }
 
     if (!formData.title.trim()) {
       newErrors.title = 'Title is required';
@@ -186,12 +204,13 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
         content: formData.content.trim(),
         categoryId: parseInt(formData.categoryId),
         subCategoryId: formData.subCategoryId ? parseInt(formData.subCategoryId) : 0,
-        articleType: formData.intentType,
+        articleType: formData.articleType,
         contentType: formData.contentType,
         intentType: formData.intentType,
         audienceType: formData.audienceType,
         tags: formData.tags || 'general',
         status: 'Published',
+        visibility: 'Public'
       };
 
       console.log('Submitting article:', articleData);
@@ -205,6 +224,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
         
         // Reset form
         setFormData({
+          articleType: '',
           title: '',
           description: '',
           content: '',
@@ -214,6 +234,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
           contentType: '',
           audienceType: '',
           tags: '',
+          visibility: '',
         });
         setErrors({});
 
@@ -241,7 +262,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
     }
 
     return dataArray.map(item => (
-      <option key={item.Id} value={item.Code}>
+      <option key={item.Code} value={item.Id}>
         {item.Name}
       </option>
     ));
@@ -306,6 +327,37 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
                 Loading categories and master data...
               </div>
             )}
+
+            {/* ========== ARTICLE TYPE ========== */}
+            <div className="mb-3">
+              <label className="form-label fw-bold">
+                Article Type <span className="text-danger">*</span>
+              </label>
+              <select
+                className={`form-select ${errors.articleType ? 'is-invalid' : ''}`}
+                name="articleType"
+                value={formData.articleType}
+                onChange={handleInputChange}
+                disabled={loading || dataLoading || articleTypes.length === 0}
+              >
+                <option value="">
+                  {articleTypes.length === 0 ? 'Loading...' : 'Select Article Type'}
+                </option>
+                {renderSelectOptions(articleTypes)}
+              </select>
+              {errors.articleType && (
+                <div className="invalid-feedback d-block">{errors.articleType}</div>
+              )}
+              {articleTypes.length > 0 && (
+                <small className="text-success">✓ {articleTypes.length} article types available</small>
+              )}
+              {articleTypes.length === 0 && !dataLoading && (
+                <small className="text-warning">⚠ No article types found</small>
+              )}
+              <small className="text-muted d-block mt-1">
+                <i className="bi bi-info-circle"></i> Purpose of the article type
+              </small>
+            </div>
 
             {/* ========== TITLE FIELD ========== */}
             <div className="mb-3">
@@ -389,11 +441,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
                   <option value="">
                     {categories.length === 0 ? 'Loading...' : 'Select Category'}
                   </option>
-                  {categories.map(cat => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
+                  {renderSelectOptions(categories)}
                 </select>
                 {errors.categoryId && (
                   <div className="invalid-feedback d-block">{errors.categoryId}</div>
@@ -420,11 +468,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
                   <option value="">
                     {!formData.categoryId ? 'Select category first' : 'Select Sub-Category (optional)'}
                   </option>
-                  {subCategories.map(sub => (
-                    <option key={sub.id} value={sub.id}>
-                      {sub.name}
-                    </option>
-                  ))}
+                  {renderSelectOptions(subCategories)}
                 </select>
                 {formData.categoryId && subCategories.length > 0 && (
                   <small className="text-success">✓ {subCategories.length} sub-categories available</small>

@@ -46,11 +46,12 @@ export const api = {
   // ==================== ARTICLE ENDPOINTS ====================
   getArticles: async (token) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/articles/home`, {
+      const res = await fetch(`${API_BASE_URL}/api/article/home?pageNumber=1`, {
         headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
+      });          
+            
+      const data = await res.json();      
+      return Array.isArray(data.articles) ? data.articles : [];
     } catch (error) {
       console.error('Error fetching articles:', error);
       return [];
@@ -70,7 +71,7 @@ export const api = {
 
   createArticle: async (token, data) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/articles`, {
+      const res = await fetch(`${API_BASE_URL}/api/article/createarticle?userId=2`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -127,7 +128,7 @@ export const api = {
   // ==================== LIKE ENDPOINTS ====================
   likeArticle: async (token, articleId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/articles/${articleId}/like`, {
+      const res = await fetch(`${API_BASE_URL}/api/article/${articleId}/like?userId=3`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -139,7 +140,7 @@ export const api = {
 
   unlikeArticle: async (token, articleId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/articles/${articleId}/like`, {
+      const res = await fetch(`${API_BASE_URL}/api/article/${articleId}/like?userId=3`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -152,9 +153,9 @@ export const api = {
   // ==================== CATEGORY ENDPOINTS ====================
   getCategories: async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/categories`);
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
+      const res = await fetch(`${API_BASE_URL}/api/category/categories`);
+      const data = await res.json();      
+      return Array.isArray(data.data) ? data.data : [];      
     } catch (error) {
       return [];
     }
@@ -163,9 +164,10 @@ export const api = {
   getSubCategories: async (categoryId) => {
     try {
       const res = await fetch(
-        `${API_BASE_URL}/api/categories/${categoryId}/subcategories`
+        `${API_BASE_URL}/api/category/subCategoriesByCategory?category=${categoryId}`
       );
-      return await res.json();
+      const data = await res.json();      
+      return Array.isArray(data.data) ? data.data : [];      
     } catch (error) {
       return [];
     }

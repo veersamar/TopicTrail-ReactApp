@@ -5,18 +5,122 @@ function ArticleCard({ article, token }) {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [commentLoading, setCommentLoading] = useState(false);
+  const [userId, setUserId] = useState(null);
+  const [likedComments, setLikedComments] = useState(new Set());
 
-  // ========== INITIALIZE LIKE COUNT ==========
+  // ========== INITIALIZE ==========
   useEffect(() => {
     if (article) {
-      // Try different property names for like count
       const count = article.likeCount || article.LikeCount || article.likes?.length || 0;
       setLikeCount(count);
+      
+      // Get userId from localStorage (set during login)
+      const storedUserId = 3;//localStorage.getItem('userId');
+      setUserId(storedUserId);
+      
       console.log('Article data:', article);
     }
   }, [article]);
+
+  // ========== FETCH COMMENTS WHEN TOGGLED ==========
+  useEffect(() => {
+    if (showComments && comments.length === 0) {
+      fetchComments();
+    }
+  }, [showComments]);
+
+  // ========== FETCH COMMENTS ==========
+  const fetchComments = async () => {
+    try {
+      setCommentLoading(true);
+      const articleId = getArticleId();
+      
+      // Get comments for an article      
+      const commentsDetail = await api.getComments(token, articleId);      
+      if (commentsDetail) {
+        setComments(Array.isArray(commentsDetail.comments) ? commentsDetail.comments : []);      
+      }
+    } catch (err) {
+      console.error('Error fetching comments:', err);
+      setError('Failed to load comments');
+    } finally {
+      setCommentLoading(false);
+    }
+  };
+
+  // ========== ADD NEW COMMENT ==========
+  const handleAddComment = async (e) => {
+    e.preventDefault();
+    
+    if (!newComment.trim()) {
+      setError('Comment cannot be empty');
+      return;
+    }
+
+    if (!userId) {
+      setError('You must be logged in to comment');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      const articleId = getArticleId();
+      
+      // Call API to add comment
+      const result = await api.createComment(token, articleId, 
+        newComment.trim(),
+        parseInt(userId)
+      );
+
+      if (result) {
+        // Add the new comment to the list
+        const commentObj = {
+          id: result.id || Math.random(),
+          content: newComment,
+          creator: {
+            name: result.creatorName || 'You',
+            email: result.creatorEmail || ''
+          },
+          createdDate: new Date().toISOString(),
+          likeCount: 0
+        };
+        
+        setComments([commentObj, ...comments]);
+        setNewComment('');
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Error adding comment:', err);
+      setError(err.message || 'Failed to add comment');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ========== DELETE COMMENT ==========
+  const handleDeleteComment = async (commentId) => {
+    if (!window.confirm('Are you sure you want to delete this comment?')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await api.deleteComment(token, commentId);
+      setComments(comments.filter(c => c.id !== commentId));
+      setError(null);
+    } catch (err) {
+      console.error('Error deleting comment:', err);
+      setError('Failed to delete comment');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // ========== SAFE PROPERTY ACCESSORS ==========
   const getTitle = () => {
@@ -74,6 +178,33 @@ function ArticleCard({ article, token }) {
     return article?.id || article?.Id;
   };
 
+  // ========== FORMAT COMMENT DATE ==========
+  const formatCommentDate = (dateStr) => {
+    if (!dateStr) return 'Just now';
+    
+    try {
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+      });
+    } catch (err) {
+      return 'Unknown date';
+    }
+  };
+
   // ========== HANDLE LIKE ==========
   const handleLike = async () => {
     try {
@@ -103,7 +234,6 @@ function ArticleCard({ article, token }) {
     } catch (error) {
       console.error('Like/Unlike error:', error);
       setError(error.message || 'Failed to update like');
-      setLoading(false);
     } finally {
       setLoading(false);
     }
@@ -159,7 +289,7 @@ function ArticleCard({ article, token }) {
         </div>
 
         {/* Creator and Meta Info */}
-        <div className="d-flex gap-3 text-muted small mb-3 align-items-center">
+        <div className="d-flex gap-3 text-muted small mb-3 align-items-center flex-wrap">
           <span className="d-flex align-items-center">
             <i className="bi bi-person-circle me-1"></i>
             {getCreatorName()}
@@ -174,12 +304,12 @@ function ArticleCard({ article, token }) {
           </span>
           <span className="d-flex align-items-center">
             <i className="bi bi-chat me-1"></i>
-            {getCommentCount()} comments
+            {comments.length || getCommentCount()} comments
           </span>
         </div>
 
         {/* Actions */}
-        <div className="d-flex gap-2">
+        <div className="d-flex gap-2 mb-3">
           <button
             className={`btn btn-sm ${liked ? 'btn-danger' : 'btn-outline-danger'}`}
             onClick={handleLike}
@@ -192,7 +322,8 @@ function ArticleCard({ article, token }) {
             className="btn btn-sm btn-outline-secondary"
             onClick={() => setShowComments(!showComments)}
           >
-            <i className="bi bi-chat me-1"></i>Comments
+            <i className="bi bi-chat me-1"></i>
+            {showComments ? 'Hide' : 'Show'} Comments
           </button>
           <a 
             href={`/articles/${getArticleId()}`}
@@ -208,23 +339,107 @@ function ArticleCard({ article, token }) {
         {/* Comments Section */}
         {showComments && (
           <div className="mt-3 pt-3 border-top">
-            <div className="alert alert-info mb-0">
-              <i className="bi bi-info-circle me-2"></i>
-              Comments section coming soon...
-            </div>
-          </div>
-        )}
+            <h6 className="mb-3">
+              <i className="bi bi-chat-dots me-2"></i>
+              Comments ({comments.length})
+            </h6>
 
-        {/* Debug Info (development only) */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mt-3 small bg-light p-2 rounded" style={{ fontSize: '0.75rem' }}>
-            <strong>Debug:</strong>
-            <p className="mb-1">
-              Keys: {Object.keys(article).slice(0, 5).join(', ')}...
-            </p>
-            <p className="mb-0">
-              ID: {getArticleId()} | Title: {getTitle()?.substring(0, 30)}...
-            </p>
+            {/* Add Comment Form */}
+            {userId && (
+              <form onSubmit={handleAddComment} className="mb-4">
+                <div className="input-group">
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    placeholder="Write a comment..."
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    disabled={loading}
+                    maxLength="500"
+                  />
+                  <button
+                    className="btn btn-sm btn-primary"
+                    type="submit"
+                    disabled={loading || !newComment.trim()}
+                  >
+                    {loading ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                        Posting...
+                      </>
+                    ) : (
+                      <>
+                        <i className="bi bi-send me-1"></i>
+                        Post
+                      </>
+                    )}
+                  </button>
+                </div>
+                <small className="text-muted d-block mt-1">
+                  {newComment.length}/500 characters
+                </small>
+              </form>
+            )}
+
+            {!userId && (
+              <div className="alert alert-info small mb-3">
+                <i className="bi bi-info-circle me-2"></i>
+                Please log in to comment
+              </div>
+            )}
+
+            {/* Loading State */}
+            {commentLoading && (
+              <div className="text-center">
+                <div className="spinner-border spinner-border-sm" role="status">
+                  <span className="visually-hidden">Loading comments...</span>
+                </div>
+              </div>
+            )}
+
+            {/* Comments List */}
+            {!commentLoading && comments.length > 0 ? (
+              <div className="comments-list">
+                {comments.map(comment => (
+                  <div key={comment.id} className="card card-sm mb-2">
+                    <div className="card-body p-3">
+                      <div className="d-flex justify-content-between align-items-start">
+                        <div className="flex-grow-1">
+                          <div className="d-flex align-items-center gap-2 mb-1">
+                            <strong className="small">
+                              {comment.creator || comment.Creator || 'Anonymous'}
+                            </strong>
+                            <small className="text-muted">
+                              {formatCommentDate(comment.createdDate || comment.CreatedDate)}
+                            </small>
+                          </div>
+                          <p className="small mb-0">
+                            {comment.content || comment.Content}
+                          </p>
+                        </div>
+                        {userId && parseInt(userId) === (comment.creator?.id || comment.Creator?.Id) && (
+                          <button
+                            className="btn btn-link btn-sm text-danger p-0"
+                            onClick={() => handleDeleteComment(comment.id || comment.Id)}
+                            disabled={loading}
+                            title="Delete comment"
+                          >
+                            <i className="bi bi-trash"></i>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              !commentLoading && (
+                <div className="alert alert-info small mb-0">
+                  <i className="bi bi-chat-left-text me-2"></i>
+                  No comments yet. Be the first to comment!
+                </div>
+              )
+            )}
           </div>
         )}
       </div>

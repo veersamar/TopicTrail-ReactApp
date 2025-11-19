@@ -201,7 +201,7 @@ export const api = {
   getComments: async (token, articleId) => {
     try {
       const res = await fetch(
-        `${API_BASE_URL}/api/comments/article/${articleId}`,
+        `${API_BASE_URL}/api/comment/article/${articleId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       return await res.json();
@@ -210,15 +210,16 @@ export const api = {
     }
   },
 
-  createComment: async (token, articleId, content) => {
+  createComment: async (token, articleId, content, userId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/comments/article/${articleId}`, {
+      console.log(`${API_BASE_URL}/api/comment/article/${articleId}/userId=3`)
+      const res = await fetch(`${API_BASE_URL}/api/comment/article/${articleId}?userId=3`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(content),
       });
       return { success: res.ok };
     } catch (error) {

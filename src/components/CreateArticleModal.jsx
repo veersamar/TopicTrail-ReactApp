@@ -14,7 +14,6 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
     categoryId: '',
     subCategoryId: '',
     intentType: '',
-    contentType: '',
     audienceType: '',
     tags: '',
   });
@@ -23,7 +22,6 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [intentTypes, setIntentTypes] = useState([]);
-  const [contentTypes, setContentTypes] = useState([]);
   const [audienceTypes, setAudienceTypes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
@@ -70,11 +68,11 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
       if (masterData && masterData.data) {
         // IMPORTANT: Extract arrays from the nested structure
         const intents = masterData.data.IntentType || [];
-        const contents = masterData.data.ContentType || [];
+        const articles = masterData.data.ArticleType || [];
         const audiences = masterData.data.AudienceType || [];
 
         console.log('Extracted IntentTypes:', intents);
-        console.log('Extracted ContentTypes:', contents);
+        console.log('Extracted ArticleTypes:', articles);
         console.log('Extracted AudienceTypes:', audiences);
 
         // Verify the data structure
@@ -84,11 +82,11 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
         }
 
         setIntentTypes(intents);
-        setContentTypes(contents);
+        setArticleTypes(articles);
         setAudienceTypes(audiences);
 
         setDebugInfo(
-          `✓ Loaded: ${intents.length} Intent Types, ${contents.length} Content Types, ${audiences.length} Audience Types`
+          `✓ Loaded: ${intents.length} Intent Types, ${articles.length} Article Types, ${audiences.length} Audience Types`
         );
       } else {
         setDebugInfo('❌ Master data structure invalid');
@@ -152,11 +150,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
     if (!formData.intentType) {
       newErrors.intentType = 'Intent Type is required';
     }
-
-    if (!formData.contentType) {
-      newErrors.contentType = 'Content Type is required';
-    }
-
+    
     if (!formData.audienceType) {
       newErrors.audienceType = 'Audience Type is required';
     }
@@ -205,7 +199,6 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
         categoryId: parseInt(formData.categoryId),
         subCategoryId: formData.subCategoryId ? parseInt(formData.subCategoryId) : 0,
         articleType: formData.articleType,
-        contentType: formData.contentType,
         intentType: formData.intentType,
         audienceType: formData.audienceType,
         tags: formData.tags || 'general',
@@ -231,7 +224,6 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
           categoryId: '',
           subCategoryId: '',
           intentType: '',
-          contentType: '',
           audienceType: '',
           tags: '',
           visibility: '',
@@ -506,38 +498,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
                 <i className="bi bi-info-circle"></i> Purpose of the article
               </small>
             </div>
-
-            {/* ========== CONTENT TYPE ========== */}
-            <div className="mb-3">
-              <label className="form-label fw-bold">
-                Content Type <span className="text-danger">*</span>
-              </label>
-              <select
-                className={`form-select ${errors.contentType ? 'is-invalid' : ''}`}
-                name="contentType"
-                value={formData.contentType}
-                onChange={handleInputChange}
-                disabled={loading || dataLoading || contentTypes.length === 0}
-              >
-                <option value="">
-                  {contentTypes.length === 0 ? 'Loading...' : 'Select Content Type'}
-                </option>
-                {renderSelectOptions(contentTypes)}
-              </select>
-              {errors.contentType && (
-                <div className="invalid-feedback d-block">{errors.contentType}</div>
-              )}
-              {contentTypes.length > 0 && (
-                <small className="text-success">✓ {contentTypes.length} content types available</small>
-              )}
-              {contentTypes.length === 0 && !dataLoading && (
-                <small className="text-warning">⚠ No content types found</small>
-              )}
-              <small className="text-muted d-block mt-1">
-                <i className="bi bi-info-circle"></i> Format of the article
-              </small>
-            </div>
-
+            
             {/* ========== AUDIENCE TYPE ========== */}
             <div className="mb-3">
               <label className="form-label fw-bold">

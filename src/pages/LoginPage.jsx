@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate, Link } from 'react-router-dom';
 
 function LoginPage() {
   const [email, setEmail] = useState('');
@@ -32,6 +33,17 @@ function LoginPage() {
           {/* Title */}
           <h2 className="card-title text-center mb-1 fw-bold">Welcome Back</h2>
           <p className="text-center text-muted mb-4">Login to TopicTrail</p>
+
+          {/*} In your Login component */}
+          <p className="text-center mb-3">
+            Don't have an account?{' '}
+            <Link
+              to="/register"
+              style={{ color: '#667eea', textDecoration: 'none' }}
+            >
+              Sign Up
+            </Link>
+          </p>
 
           {/* Error Alert */}
           {error && (

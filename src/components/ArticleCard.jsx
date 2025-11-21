@@ -1,152 +1,209 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 
-function ArticleCard({ article, token }) {
-  const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(0);
-  const [showComments, setShowComments] = useState(false);
-  const [comments, setComments] = useState([]);
-  const [newComment, setNewComment] = useState('');
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [commentLoading, setCommentLoading] = useState(false);
-  const [userId, setUserId] = useState(null);
-  const [likedComments, setLikedComments] = useState(new Set());
+function ArticleCard({ article, token, onRefresh }) {
+  const { userId } = useAuth();
+
+  // ========== STATE ==========
+  const [cardState, setCardState] = useState({
+    liked: false,
+    likeCount: 0,
+    showComments: false,
+    comments: [],
+    newComment: '',
+    error: null,
+    loading: false,
+    commentLoading: false,
+  });
 
   // ========== INITIALIZE ==========
   useEffect(() => {
     if (article) {
       const count = article.likeCount || article.LikeCount || article.likes?.length || 0;
-      setLikeCount(count);
-      
-      // Get userId from localStorage (set during login)
-      const storedUserId = 3;//localStorage.getItem('userId');
-      setUserId(storedUserId);
-      
-      console.log('Article data:', article);
+      setCardState(prev => ({
+        ...prev,
+        likeCount: count,
+      }));
     }
   }, [article]);
 
   // ========== FETCH COMMENTS WHEN TOGGLED ==========
   useEffect(() => {
-    if (showComments && comments.length === 0) {
+    if (cardState.showComments && cardState.comments.length === 0) {
       fetchComments();
     }
-  }, [showComments]);
+  }, [cardState.showComments]);
 
   // ========== FETCH COMMENTS ==========
-  const fetchComments = async () => {
+  const fetchComments = useCallback(async () => {
     try {
-      setCommentLoading(true);
+      setCardState(prev => ({ ...prev, commentLoading: true, error: null }));
       const articleId = getArticleId();
       
-      // Get comments for an article      
-      const commentsDetail = await api.getComments(token, articleId);      
-      if (commentsDetail) {
-        setComments(Array.isArray(commentsDetail.comments) ? commentsDetail.comments : []);      
-      }
+      const commentsDetail = await api.getComments(token, articleId);
+      const commentsList = Array.isArray(commentsDetail?.comments) ? commentsDetail.comments : [];
+      
+      setCardState(prev => ({
+        ...prev,
+        comments: commentsList,
+        commentLoading: false,
+      }));
     } catch (err) {
       console.error('Error fetching comments:', err);
-      setError('Failed to load comments');
-    } finally {
-      setCommentLoading(false);
+      setCardState(prev => ({
+        ...prev,
+        error: 'Failed to load comments',
+        commentLoading: false,
+      }));
     }
-  };
+  }, [token]);
 
   // ========== ADD NEW COMMENT ==========
-  const handleAddComment = async (e) => {
+  const handleAddComment = useCallback(async (e) => {
     e.preventDefault();
     
-    if (!newComment.trim()) {
-      setError('Comment cannot be empty');
+    if (!cardState.newComment.trim()) {
+      setCardState(prev => ({
+        ...prev,
+        error: 'Comment cannot be empty',
+      }));
       return;
     }
 
     if (!userId) {
-      setError('You must be logged in to comment');
+      setCardState(prev => ({
+        ...prev,
+        error: 'You must be logged in to comment',
+      }));
       return;
     }
 
     try {
-      setLoading(true);
-      setError(null);
+      setCardState(prev => ({ ...prev, loading: true, error: null }));
       const articleId = getArticleId();
       
-      // Call API to add comment
-      const result = await api.createComment(token, articleId, 
-        newComment.trim(),
-        parseInt(userId)
+      const result = await api.createComment(
+        token,
+        articleId,
+        cardState.newComment.trim(),
+        userId
       );
 
-      if (result) {
-        // Add the new comment to the list
+      console.log('Comment creation result:', result);
+
+      // Check if comment was created successfully
+      if (result.success) {
         const commentObj = {
           id: result.id || Math.random(),
-          content: newComment,
-          creator: {
-            name: result.creatorName || 'You',
-            email: result.creatorEmail || ''
-          },
+          content: cardState.newComment,
+          creator: { name: result.creatorName || 'You', id: userId },
           createdDate: new Date().toISOString(),
-          likeCount: 0
+          likeCount: 0,
         };
         
-        setComments([commentObj, ...comments]);
-        setNewComment('');
-        setError(null);
+        setCardState(prev => ({
+          ...prev,
+          comments: [commentObj, ...prev.comments],
+          newComment: '',
+          loading: false,
+          error: null,
+        }));
+      } else {
+        // Comment creation failed
+        setCardState(prev => ({
+          ...prev,
+          error: result.error || 'Failed to add comment',
+          loading: false,
+        }));
       }
     } catch (err) {
       console.error('Error adding comment:', err);
-      setError(err.message || 'Failed to add comment');
-    } finally {
-      setLoading(false);
+      setCardState(prev => ({
+        ...prev,
+        error: err.message || 'Failed to add comment',
+        loading: false,
+      }));
     }
-  };
+  }, [cardState.newComment, userId, token]);
 
   // ========== DELETE COMMENT ==========
-  const handleDeleteComment = async (commentId) => {
+  const handleDeleteComment = useCallback(async (commentId) => {
     if (!window.confirm('Are you sure you want to delete this comment?')) {
       return;
     }
 
     try {
-      setLoading(true);
+      setCardState(prev => ({ ...prev, loading: true }));
       await api.deleteComment(token, commentId);
-      setComments(comments.filter(c => c.id !== commentId));
-      setError(null);
+      
+      setCardState(prev => ({
+        ...prev,
+        comments: prev.comments.filter(c => c.id !== commentId),
+        loading: false,
+        error: null,
+      }));
     } catch (err) {
       console.error('Error deleting comment:', err);
-      setError('Failed to delete comment');
-    } finally {
-      setLoading(false);
+      setCardState(prev => ({
+        ...prev,
+        error: 'Failed to delete comment',
+        loading: false,
+      }));
     }
-  };
+  }, [token]);
+
+  // ========== HANDLE LIKE ==========
+  const handleLike = useCallback(async () => {
+    try {
+      setCardState(prev => ({ ...prev, error: null, loading: true }));
+
+      const articleId = getArticleId();
+      if (!articleId || !token || !userId) {
+        throw new Error('Missing required data');
+      }
+
+      const newLiked = !cardState.liked;
+
+      if (newLiked) {
+        await api.likeArticle(token, articleId, userId);
+        setCardState(prev => ({
+          ...prev,
+          likeCount: prev.likeCount + 1,
+          liked: true,
+          loading: false,
+        }));
+      } else {
+        await api.unlikeArticle(token, articleId, userId);
+        setCardState(prev => ({
+          ...prev,
+          likeCount: Math.max(0, prev.likeCount - 1),
+          liked: false,
+          loading: false,
+        }));
+      }
+    } catch (error) {
+      console.error('Like/Unlike error:', error);
+      setCardState(prev => ({
+        ...prev,
+        error: error.message || 'Failed to update like',
+        loading: false,
+      }));
+    }
+  }, [cardState.liked, token, userId]);
 
   // ========== SAFE PROPERTY ACCESSORS ==========
-  const getTitle = () => {
-    return article?.title || article?.Title || 'Untitled Article';
-  };
-
-  const getDescription = () => {
-    return article?.description || article?.Description || 'No description available';
-  };
-
-  const getCategory = () => {
-    return article?.categoryName || 
-           article?.CategoryName || 
-           article?.category || 
-           article?.Category || 
-           'General';
-  };
-
-  const getCreatorName = () => {
-    return article?.creatorName || 
-           article?.CreatorName || 
-           article?.creator?.name || 
-           article?.Creator?.Name || 
-           'Anonymous';
-  };
-
+  const getTitle = () => article?.title || article?.Title || 'Untitled Article';
+  
+  const getDescription = () => 
+    article?.description || article?.Description || 'No description available';
+  
+  const getCategory = () =>
+    article?.categoryName || article?.CategoryName || article?.category || article?.Category || 'General';
+  
+  const getCreatorName = () =>
+    article?.creatorName || article?.CreatorName || article?.creator?.name || 'Anonymous';
+  
   const getCreatedDate = () => {
     const dateStr = article?.createdDate || article?.CreatedDate;
     if (!dateStr) return 'Unknown date';
@@ -155,28 +212,17 @@ function ArticleCard({ article, token }) {
       return new Date(dateStr).toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
-        day: 'numeric'
+        day: 'numeric',
       });
-    } catch (err) {
-      console.error('Date parsing error:', err);
+    } catch {
       return 'Unknown date';
     }
   };
-
-  const getViewCount = () => {
-    return article?.viewCount || article?.ViewCount || 0;
-  };
-
-  const getCommentCount = () => {
-    return article?.commentCount || 
-           article?.CommentCount || 
-           article?.comments?.length || 
-           0;
-  };
-
-  const getArticleId = () => {
-    return article?.id || article?.Id;
-  };
+  
+  const getViewCount = () => article?.viewCount || article?.ViewCount || 0;
+  const getCommentCount = () => article?.commentCount || article?.CommentCount || 0;
+  
+  const getArticleId = () => article?.id || article?.Id;
 
   // ========== FORMAT COMMENT DATE ==========
   const formatCommentDate = (dateStr) => {
@@ -195,54 +241,16 @@ function ArticleCard({ article, token }) {
       if (diffHours < 24) return `${diffHours}h ago`;
       if (diffDays < 7) return `${diffDays}d ago`;
       
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-      });
-    } catch (err) {
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch {
       return 'Unknown date';
-    }
-  };
-
-  // ========== HANDLE LIKE ==========
-  const handleLike = async () => {
-    try {
-      setError(null);
-      setLoading(true);
-
-      const articleId = getArticleId();
-      if (!articleId) {
-        throw new Error('Article ID is missing');
-      }
-
-      if (!token) {
-        throw new Error('Authentication token is missing');
-      }
-
-      const newLiked = !liked;
-
-      if (newLiked) {
-        await api.likeArticle(token, articleId);
-        setLikeCount(prev => prev + 1);
-        setLiked(true);
-      } else {
-        await api.unlikeArticle(token, articleId);
-        setLikeCount(prev => Math.max(0, prev - 1));
-        setLiked(false);
-      }
-    } catch (error) {
-      console.error('Like/Unlike error:', error);
-      setError(error.message || 'Failed to update like');
-    } finally {
-      setLoading(false);
     }
   };
 
   // ========== VALIDATE ARTICLE DATA ==========
   if (!article || typeof article !== 'object') {
     return (
-      <div className="card article-card">
+      <div className="card">
         <div className="card-body">
           <div className="alert alert-warning mb-0">
             <i className="bi bi-exclamation-triangle me-2"></i>
@@ -253,114 +261,179 @@ function ArticleCard({ article, token }) {
     );
   }
 
+  const { liked, likeCount, showComments, comments, newComment, error, loading, commentLoading } = cardState;
+
   // ========== RENDER COMPONENT ==========
   return (
-    <div className="card article-card shadow-sm">
-      <div className="card-body">
+    <div 
+      className="card shadow-sm border-0"
+      style={{
+        borderRadius: '8px',
+        overflow: 'hidden',
+        transition: 'all 0.3s ease',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.boxShadow = '0 8px 16px rgba(102, 126, 234, 0.15)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.08)';
+      }}
+    >
+      <div className="card-body p-4">
         {/* Error Alert */}
         {error && (
-          <div className="alert alert-danger alert-dismissible fade show mb-3" role="alert">
-            <i className="bi bi-exclamation-circle me-2"></i>
-            {error}
+          <div 
+            className="alert alert-danger alert-dismissible fade show mb-3 border-0"
+            role="alert"
+            style={{ background: '#f8d7da', borderLeft: '4px solid #dc3545' }}
+          >
+            <div className="d-flex align-items-center gap-2">
+              <i className="bi bi-exclamation-circle" style={{ color: '#dc3545' }}></i>
+              <span className="small">{error}</span>
+            </div>
             <button
               type="button"
               className="btn-close"
-              onClick={() => setError(null)}
+              onClick={() => setCardState(prev => ({ ...prev, error: null }))}
             ></button>
           </div>
         )}
 
-        {/* Header */}
-        <div className="d-flex justify-content-between align-items-start mb-2">
+        {/* Header with Badge */}
+        <div className="d-flex justify-content-between align-items-start mb-3 gap-2">
           <div className="flex-grow-1">
-            <h5 className="card-title mb-1">
-              <a href={`/articles/${getArticleId()}`} className="text-decoration-none">
+            <h5 className="card-title mb-2" style={{ fontWeight: 600, color: '#2c3e50' }}>
+              <a 
+                href={`/articles/${getArticleId()}`}
+                className="text-decoration-none"
+                style={{ color: '#2c3e50', transition: 'color 0.2s' }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#667eea'}
+                onMouseLeave={(e) => e.currentTarget.style.color = '#2c3e50'}
+              >
                 {getTitle()}
               </a>
             </h5>
-            <p className="card-text text-muted small mb-0">
+            <p className="card-text text-muted small mb-0" style={{ lineHeight: 1.5 }}>
               {getDescription().substring(0, 100)}
               {getDescription().length > 100 ? '...' : ''}
             </p>
           </div>
-          <span className="badge bg-primary ms-2">
+          <span 
+            className="badge"
+            style={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              fontSize: '0.75rem',
+              padding: '0.5rem 0.75rem',
+              borderRadius: '20px',
+              whiteSpace: 'nowrap',
+            }}
+          >
             {getCategory()}
           </span>
         </div>
 
-        {/* Creator and Meta Info */}
-        <div className="d-flex gap-3 text-muted small mb-3 align-items-center flex-wrap">
-          <span className="d-flex align-items-center">
-            <i className="bi bi-person-circle me-1"></i>
+        {/* Meta Information */}
+        <div 
+          className="d-flex gap-3 text-muted small mb-3 align-items-center flex-wrap"
+          style={{ color: '#6c757d', fontSize: '0.875rem' }}
+        >
+          <span className="d-flex align-items-center gap-1">
+            <i className="bi bi-person-circle" style={{ fontSize: '1rem' }}></i>
             {getCreatorName()}
           </span>
-          <span className="d-flex align-items-center">
-            <i className="bi bi-calendar-event me-1"></i>
+          <span className="d-flex align-items-center gap-1">
+            <i className="bi bi-calendar-event" style={{ fontSize: '1rem' }}></i>
             {getCreatedDate()}
           </span>
-          <span className="d-flex align-items-center">
-            <i className="bi bi-eye me-1"></i>
+          <span className="d-flex align-items-center gap-1">
+            <i className="bi bi-eye" style={{ fontSize: '1rem' }}></i>
             {getViewCount()} views
           </span>
-          <span className="d-flex align-items-center">
-            <i className="bi bi-chat me-1"></i>
+          <span className="d-flex align-items-center gap-1">
+            <i className="bi bi-chat" style={{ fontSize: '1rem' }}></i>
             {comments.length || getCommentCount()} comments
           </span>
         </div>
 
         {/* Actions */}
-        <div className="d-flex gap-2 mb-3">
+        <div className="d-flex gap-2 mb-3 flex-wrap">
           <button
             className={`btn btn-sm ${liked ? 'btn-danger' : 'btn-outline-danger'}`}
             onClick={handleLike}
             disabled={loading}
+            style={{
+              borderRadius: '6px',
+              transition: 'all 0.2s',
+              fontSize: '0.875rem',
+            }}
           >
             <i className={`bi ${liked ? 'bi-heart-fill' : 'bi-heart'} me-1`}></i>
             {likeCount}
           </button>
           <button
             className="btn btn-sm btn-outline-secondary"
-            onClick={() => setShowComments(!showComments)}
+            onClick={() => setCardState(prev => ({ ...prev, showComments: !prev.showComments }))}
+            style={{
+              borderRadius: '6px',
+              transition: 'all 0.2s',
+              fontSize: '0.875rem',
+            }}
           >
             <i className="bi bi-chat me-1"></i>
             {showComments ? 'Hide' : 'Show'} Comments
           </button>
           <a 
-            href={`/articles/${getArticleId()}`}
+            href={`/article/${getArticleId()}`}  // Correct format
             className="btn btn-sm btn-outline-primary"
+            style={{
+              borderRadius: '6px',
+              fontSize: '0.875rem',
+            }}
           >
             <i className="bi bi-eye me-1"></i>Read Full
           </a>
-          <button className="btn btn-sm btn-outline-secondary ms-auto">
+          <button 
+            className="btn btn-sm btn-outline-secondary ms-auto"
+            style={{
+              borderRadius: '6px',
+              fontSize: '0.875rem',
+            }}
+          >
             <i className="bi bi-share me-1"></i>Share
           </button>
         </div>
 
         {/* Comments Section */}
         {showComments && (
-          <div className="mt-3 pt-3 border-top">
-            <h6 className="mb-3">
-              <i className="bi bi-chat-dots me-2"></i>
+          <div className="mt-4 pt-4 border-top">
+            <h6 className="mb-3 fw-600" style={{ color: '#2c3e50' }}>
+              <i className="bi bi-chat-dots me-2" style={{ color: '#667eea' }}></i>
               Comments ({comments.length})
             </h6>
 
             {/* Add Comment Form */}
             {userId && (
               <form onSubmit={handleAddComment} className="mb-4">
-                <div className="input-group">
+                <div className="input-group input-group-sm" style={{ borderRadius: '6px', overflow: 'hidden' }}>
                   <input
                     type="text"
-                    className="form-control form-control-sm"
-                    placeholder="Write a comment..."
+                    className="form-control"
+                    placeholder="Add a comment..."
                     value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
+                    onChange={(e) => setCardState(prev => ({ ...prev, newComment: e.target.value }))}
                     disabled={loading}
                     maxLength="500"
+                    style={{ borderRadius: '6px 0 0 6px' }}
                   />
                   <button
-                    className="btn btn-sm btn-primary"
+                    className="btn btn-primary"
                     type="submit"
                     disabled={loading || !newComment.trim()}
+                    style={{
+                      borderRadius: '0 6px 6px 0',
+                      background: loading || !newComment.trim() ? '#ccc' : '#667eea',
+                      border: 'none',
+                    }}
                   >
                     {loading ? (
                       <>
@@ -375,24 +448,24 @@ function ArticleCard({ article, token }) {
                     )}
                   </button>
                 </div>
-                <small className="text-muted d-block mt-1">
+                <small className="text-muted d-block mt-2">
                   {newComment.length}/500 characters
                 </small>
               </form>
             )}
 
             {!userId && (
-              <div className="alert alert-info small mb-3">
-                <i className="bi bi-info-circle me-2"></i>
+              <div className="alert alert-info small mb-3 border-0" style={{ background: '#d1ecf1', borderLeft: '4px solid #17a2b8' }}>
+                <i className="bi bi-info-circle me-2" style={{ color: '#17a2b8' }}></i>
                 Please log in to comment
               </div>
             )}
 
             {/* Loading State */}
             {commentLoading && (
-              <div className="text-center">
+              <div className="text-center py-3">
                 <div className="spinner-border spinner-border-sm" role="status">
-                  <span className="visually-hidden">Loading comments...</span>
+                  <span className="visually-hidden">Loading...</span>
                 </div>
               </div>
             )}
@@ -401,28 +474,37 @@ function ArticleCard({ article, token }) {
             {!commentLoading && comments.length > 0 ? (
               <div className="comments-list">
                 {comments.map(comment => (
-                  <div key={comment.id} className="card card-sm mb-2">
+                  <div 
+                    key={comment.id}
+                    className="card card-sm mb-2 border-0"
+                    style={{
+                      background: '#f8f9fa',
+                      borderRadius: '6px',
+                      borderLeft: '3px solid #667eea',
+                    }}
+                  >
                     <div className="card-body p-3">
                       <div className="d-flex justify-content-between align-items-start">
                         <div className="flex-grow-1">
-                          <div className="d-flex align-items-center gap-2 mb-1">
-                            <strong className="small">
+                          <div className="d-flex align-items-center gap-2 mb-2">
+                            <strong className="small" style={{ color: '#2c3e50' }}>
                               {comment.creator || comment.Creator || 'Anonymous'}
                             </strong>
                             <small className="text-muted">
                               {formatCommentDate(comment.createdDate || comment.CreatedDate)}
                             </small>
                           </div>
-                          <p className="small mb-0">
+                          <p className="small mb-0" style={{ color: '#555' }}>
                             {comment.content || comment.Content}
                           </p>
                         </div>
                         {userId && parseInt(userId) === (comment.creator?.id || comment.Creator?.Id) && (
                           <button
-                            className="btn btn-link btn-sm text-danger p-0"
+                            className="btn btn-link btn-sm text-danger p-0 ms-2"
                             onClick={() => handleDeleteComment(comment.id || comment.Id)}
                             disabled={loading}
                             title="Delete comment"
+                            style={{ textDecoration: 'none' }}
                           >
                             <i className="bi bi-trash"></i>
                           </button>
@@ -434,8 +516,8 @@ function ArticleCard({ article, token }) {
               </div>
             ) : (
               !commentLoading && (
-                <div className="alert alert-info small mb-0">
-                  <i className="bi bi-chat-left-text me-2"></i>
+                <div className="alert alert-info small mb-0 border-0" style={{ background: '#d1ecf1' }}>
+                  <i className="bi bi-chat-left-text me-2" style={{ color: '#17a2b8' }}></i>
                   No comments yet. Be the first to comment!
                 </div>
               )

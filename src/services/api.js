@@ -261,7 +261,7 @@ export const api = {
   getCategories: async () => {
     try {
       if (isCacheValid('categories') && cache.categories) {
-        console.log('Returning cached categories');
+        console.log('Returning cached categories', cache.categories);
         return cache.categories;
       }
 

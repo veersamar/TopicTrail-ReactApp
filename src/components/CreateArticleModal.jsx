@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
+import axios from 'axios';
 
 function CreateArticleModal({ show, onClose, onSuccess }) {
   const { token, userId } = useAuth();
@@ -15,7 +16,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
     subCategoryId: '',
     intentType: '',
     audienceType: '',
-    tags: '',
+    tags: ''
   });
 
   const [formState, setFormState] = useState({
@@ -169,7 +170,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
       };
 
       console.log('Submitting article:', articleData);
-
+      const userId = localStorage.getItem('userId');      
       const result = await api.createArticle(token, userId, articleData);
       console.log('Article creation result:', result);
 

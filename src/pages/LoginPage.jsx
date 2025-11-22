@@ -1,130 +1,137 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
 
 function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showAlert, setShowAlert] = useState(false);
-  const { login, loading, error } = useAuth();
+  const [formData, setFormData] = useState({
+    email: '',
+    password: ''
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const { login, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/articles');
+    }
+  }, [isAuthenticated, navigate]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    setError('');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email || !password) {
-      setShowAlert(true);
+    setError('');
+
+    if (!formData.email || !formData.password) {
+      setError('Please fill in all fields');
       return;
     }
-    await login(email, password);
+
+    setLoading(true);
+
+    try {
+      const result = await login(formData.email, formData.password);
+
+      if (result.success) {
+        navigate('/articles');
+      } else {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError('An unexpected error occurred');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="login-container">
-      <div className="card login-card" style={{ width: '100%', maxWidth: '420px' }}>
-        <div className="card-body p-5">
-          {/* Logo */}
-          <div className="text-center mb-4">
-            <div className="bg-primary rounded-circle d-flex align-items-center justify-content-center mx-auto" 
-                 style={{ width: '50px', height: '50px' }}>
-              <span className="text-white fw-bold" style={{ fontSize: '28px' }}>T</span>
-            </div>
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'var(--light-bg)',
+      padding: 'var(--spacing-lg)'
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: '400px',
+        backgroundColor: 'white',
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-lg)',
+        padding: 'var(--spacing-xxl)'
+      }}>
+        <h2 style={{ textAlign: 'center', marginBottom: 'var(--spacing-lg)' }}>
+          Welcome Back
+        </h2>
+
+        {error && (
+          <div className="alert alert-danger" style={{ marginBottom: 'var(--spacing-md)' }}>
+            {error}
           </div>
+        )}
 
-          {/* Title */}
-          <h2 className="card-title text-center mb-1 fw-bold">Welcome Back</h2>
-          <p className="text-center text-muted mb-4">Login to TopicTrail</p>
-
-          {/*} In your Login component */}
-          <p className="text-center mb-3">
-            Don't have an account?{' '}
-            <Link
-              to="/register"
-              style={{ color: '#667eea', textDecoration: 'none' }}
-            >
-              Sign Up
-            </Link>
-          </p>
-
-          {/* Error Alert */}
-          {error && (
-            <div className="alert alert-danger alert-dismissible fade show" role="alert">
-              <i className="bi bi-exclamation-circle me-2"></i>
-              {error}
-              <button type="button" className="btn-close" onClick={() => setShowAlert(false)}></button>
-            </div>
-          )}
-
-          {/* Empty Fields Alert */}
-          {showAlert && (
-            <div className="alert alert-warning alert-dismissible fade show" role="alert">
-              Please fill in all fields
-              <button type="button" className="btn-close" onClick={() => setShowAlert(false)}></button>
-            </div>
-          )}
-
-          {/* Form */}
-          <div className="mb-3">
-            <label className="form-label fw-500">Email Address</label>
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+            <label style={{ display: 'block', marginBottom: 'var(--spacing-sm)', fontWeight: 600 }}>
+              Email
+            </label>
             <input
               type="email"
-              className="form-control form-control-lg"
-              placeholder="john@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="Enter your email"
               disabled={loading}
             />
           </div>
 
-          <div className="mb-3">
-            <label className="form-label fw-500">Password</label>
-            <div className="input-group input-group-lg">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                className="form-control"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={loading}
-              />
-              <button
-                className="btn btn-outline-secondary"
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                <i className={`bi ${showPassword ? 'bi-eye-slash' : 'bi-eye'}`}></i>
-              </button>
-            </div>
-          </div>
-
-          {/* Remember Me */}
-          <div className="form-check mb-3">
-            <input className="form-check-input" type="checkbox" id="rememberMe" />
-            <label className="form-check-label" htmlFor="rememberMe">
-              Remember me
+          <div style={{ marginBottom: 'var(--spacing-xl)' }}>
+            <label style={{ display: 'block', marginBottom: 'var(--spacing-sm)', fontWeight: 600 }}>
+              Password
             </label>
+            <input
+              type="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="Enter your password"
+              disabled={loading}
+            />
           </div>
 
-          {/* Submit Button */}
           <button
-            onClick={handleSubmit}
+            type="submit"
+            className="btn-primary w-100"
             disabled={loading}
-            className="btn btn-primary btn-lg w-100 mb-3"
+            style={{ marginBottom: 'var(--spacing-md)' }}
           >
             {loading ? (
               <>
-                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                Logging In...
+                <span className="spinner-border spinner-border-sm" style={{ marginRight: '0.5rem' }}></span>
+                Logging in...
               </>
             ) : (
               'Login'
             )}
           </button>
 
-          {/* Demo Credentials */}
-          <div className="alert alert-info small mb-0">
-            <strong>Demo:</strong> john@example.com / password
+          <div style={{ textAlign: 'center' }}>
+            <span className="text-secondary">Don't have an account? </span>
+            <Link to="/register">Register here</Link>
           </div>
-        </div>
+        </form>
       </div>
     </div>
   );

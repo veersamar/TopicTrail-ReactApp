@@ -44,6 +44,7 @@ function ArticlesFeed({ refreshTrigger }) {
   useEffect(() => {
     const fetchArticles = async () => {
       try {
+        
         if (!token) {
           console.warn('No token available');
           setArticles([]);
@@ -196,12 +197,12 @@ function ArticlesFeed({ refreshTrigger }) {
             onChange={(e) => setSelectedCategory(e.target.value)}
             disabled={categoriesLoading || categories.length === 0}
           >
-            <option value="all">
+            <option key="all" value="all">
               {categoriesLoading ? 'Loading...' : 'All Categories'}
             </option>
-            {categories.map(cat => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name || 'Unnamed Category'}
+            {categories.map((cat, idx) => (
+              <option key={cat?.id ?? `cat-${idx}`} value={cat?.id}>
+                {cat?.name || 'Unnamed Category'}
               </option>
             ))}
           </select>

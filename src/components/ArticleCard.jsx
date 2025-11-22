@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 
@@ -303,15 +304,15 @@ function ArticleCard({ article, token, onRefresh }) {
         <div className="d-flex justify-content-between align-items-start mb-3 gap-2">
           <div className="flex-grow-1">
             <h5 className="card-title mb-2" style={{ fontWeight: 600, color: '#2c3e50' }}>
-              <a 
-                href={`/articles/${getArticleId()}`}
+              <Link
+                to={`/articles/${getArticleId()}`}
                 className="text-decoration-none"
                 style={{ color: '#2c3e50', transition: 'color 0.2s' }}
                 onMouseEnter={(e) => e.currentTarget.style.color = '#667eea'}
                 onMouseLeave={(e) => e.currentTarget.style.color = '#2c3e50'}
               >
                 {getTitle()}
-              </a>
+              </Link>
             </h5>
             <p className="card-text text-muted small mb-0" style={{ lineHeight: 1.5 }}>
               {getDescription().substring(0, 100)}
@@ -382,8 +383,8 @@ function ArticleCard({ article, token, onRefresh }) {
             <i className="bi bi-chat me-1"></i>
             {showComments ? 'Hide' : 'Show'} Comments
           </button>
-          <a 
-            href={`/article/${getArticleId()}`}  // Correct format
+          <Link
+            to={`/articles/${getArticleId()}`}
             className="btn btn-sm btn-outline-primary"
             style={{
               borderRadius: '6px',
@@ -391,7 +392,7 @@ function ArticleCard({ article, token, onRefresh }) {
             }}
           >
             <i className="bi bi-eye me-1"></i>Read Full
-          </a>
+          </Link>
           <button 
             className="btn btn-sm btn-outline-secondary ms-auto"
             style={{

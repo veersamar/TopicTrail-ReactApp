@@ -1,6 +1,7 @@
-import React, { useState, useContext, useCallback, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
+import axios from 'axios';
 
-const AuthContext = React.createContext();
+const AuthContext = createContext();
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -13,35 +14,28 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
-  const [userId, setUserId] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  // Initialize from localStorage on mount
+  // Initialize auth state from localStorage on mount
   useEffect(() => {
-    const initializeAuth = () => {
+    const initializeAuth = async () => {
       try {
         const storedToken = localStorage.getItem('authToken');
-        const storedUserId = localStorage.getItem('userId');
-        const storedUser = localStorage.getItem('user');
+        const savedUser = localStorage.getItem('user');
 
-        if (storedToken && storedUserId) {
+        if (storedToken && savedUser) {
+          // Set axios default header
+          axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+
           setToken(storedToken);
-          setUserId(parseInt(storedUserId, 10));
-          
-          if (storedUser) {
-            try {
-              setUser(JSON.parse(storedUser));
-            } catch (e) {
-              console.error('Failed to parse stored user:', e);
-            }
-          }
+          setUser(JSON.parse(savedUser));
+          setIsAuthenticated(true);
         }
-      } catch (err) {
-        console.error('Auth initialization error:', err);
+      } catch (error) {
+        console.error('Error initializing auth:', error);
         // Clear invalid data
         localStorage.removeItem('authToken');
-        localStorage.removeItem('userId');
         localStorage.removeItem('user');
       } finally {
         setLoading(false);
@@ -51,86 +45,113 @@ export const AuthProvider = ({ children }) => {
     initializeAuth();
   }, []);
 
-  const login = useCallback(async (email, password) => {
-    setLoading(true);
-    setError(null);
+  const login = async (email, password) => {
     try {
-      const response = await fetch('https://localhost:7083/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+      const response = await axios.post(`https://localhost:7083/api/auth/login`, {
+        email,
+        password
       });
+      // Normalize response shapes: some backends return { token, user }, others return { accessToken, data: { user } }, etc.
+      const res = response?.data || {};
+      const respToken = res.token || res.accessToken || res.access_token || res.data?.token || res.data?.accessToken;
+      const userData = res.user || res.data?.user || res.data || res.userProfile || res.data?.userProfile || null;
 
-      const data = await response.json();
-
-      if (response.ok && data.token && data.userId) {
-        const userObj = {
-          id: data.userId,
-          email: data.email,
-          name: data.name || 'User',
-        };
-
-        // Store in state
-        setToken(data.token);
-        setUserId(data.userId);
-        setUser(userObj);
-
-        // Persist to localStorage
-        localStorage.setItem('authToken', data.token);
-        localStorage.setItem('userId', String(data.userId));
-        localStorage.setItem('user', JSON.stringify(userObj));
-
-        return { success: true };
+      // Persist token if present
+      if (respToken) {
+        localStorage.setItem('authToken', respToken);
+        setToken(respToken);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${respToken}`;
       }
 
-      const errorMsg = data.message || 'Login failed';
-      setError(errorMsg);
-      return { success: false, error: errorMsg };
-    } catch (err) {
-      const errorMsg = err.message || 'Network error during login';
-      setError(errorMsg);
-      return { success: false, error: errorMsg };
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      // Persist user if present (try to normalize common shapes)
+      if (userData) {
+        try {
+          localStorage.setItem('user', JSON.stringify(userData));
+        } catch (e) {
+          console.warn('Failed to stringify user for localStorage', e);
+        }
+        setUser(userData);
+      }
 
-  const logout = useCallback(() => {
-    setUser(null);
-    setToken(null);
-    setUserId(null);
-    setError(null);
-    
+      // Update auth flag if we have a token (or at least user)
+      setIsAuthenticated(!!respToken || !!userData);
+
+      return { success: !!respToken || !!userData, user: userData, token: respToken };
+    } catch (error) {
+      console.error('Login error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Login failed'
+      };
+    }
+  };
+
+  const register = async (username, email, password) => {
+    try {
+      const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/auth/register`, {
+        username,
+        email,
+        password
+      });
+      const res = response?.data || {};
+      const respToken = res.token || res.accessToken || res.access_token || res.data?.token || res.data?.accessToken;
+      const userData = res.user || res.data?.user || res.data || res.userProfile || res.data?.userProfile || null;
+
+      if (respToken) {
+        localStorage.setItem('authToken', respToken);
+        setToken(respToken);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${respToken}`;
+      }
+
+      if (userData) {
+        try {
+          localStorage.setItem('user', JSON.stringify(userData));
+        } catch (e) {
+          console.warn('Failed to stringify user for localStorage', e);
+        }
+        setUser(userData);
+      }
+
+      setIsAuthenticated(!!respToken || !!userData);
+
+      return { success: !!respToken || !!userData, user: userData, token: respToken };
+    } catch (error) {
+      console.error('Registration error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Registration failed'
+      };
+    }
+  };
+
+  const logout = () => {
     // Clear localStorage
     localStorage.removeItem('authToken');
-    localStorage.removeItem('userId');
     localStorage.removeItem('user');
-  }, []);
 
-  const updateUser = useCallback((updates) => {
-    setUser(prev => {
-      const updated = { ...prev, ...updates };
-      localStorage.setItem('user', JSON.stringify(updated));
-      return updated;
-    });
-  }, []);
+    // Clear axios default header
+    delete axios.defaults.headers.common['Authorization'];
+
+    // Update state
+    setUser(null);
+    setToken(null);
+    setIsAuthenticated(false);
+  };
 
   const value = {
     user,
     token,
-    userId,
+    // Provide a normalized userId for consumers
+    userId: user?.id || user?.Id || user?.userId || user?.user?.id || null,
+    isAuthenticated,
     loading,
-    error,
     login,
+    register,
     logout,
-    setUser,
-    updateUser,
-    isAuthenticated: !!token && !!userId,
+    setUser
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
+
+export default AuthContext;

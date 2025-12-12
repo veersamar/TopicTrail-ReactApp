@@ -41,10 +41,10 @@ function ArticleCard({ article, token, onRefresh }) {
     try {
       setCardState(prev => ({ ...prev, commentLoading: true, error: null }));
       const articleId = getArticleId();
-      
+
       const commentsDetail = await api.getComments(token, articleId);
       const commentsList = Array.isArray(commentsDetail?.comments) ? commentsDetail.comments : [];
-      
+
       setCardState(prev => ({
         ...prev,
         comments: commentsList,
@@ -63,7 +63,7 @@ function ArticleCard({ article, token, onRefresh }) {
   // ========== ADD NEW COMMENT ==========
   const handleAddComment = useCallback(async (e) => {
     e.preventDefault();
-    
+
     if (!cardState.newComment.trim()) {
       setCardState(prev => ({
         ...prev,
@@ -83,7 +83,7 @@ function ArticleCard({ article, token, onRefresh }) {
     try {
       setCardState(prev => ({ ...prev, loading: true, error: null }));
       const articleId = getArticleId();
-      
+
       const result = await api.createComment(
         token,
         articleId,
@@ -102,7 +102,7 @@ function ArticleCard({ article, token, onRefresh }) {
           createdDate: new Date().toISOString(),
           likeCount: 0,
         };
-        
+
         setCardState(prev => ({
           ...prev,
           comments: [commentObj, ...prev.comments],
@@ -137,7 +137,7 @@ function ArticleCard({ article, token, onRefresh }) {
     try {
       setCardState(prev => ({ ...prev, loading: true }));
       await api.deleteComment(token, commentId);
-      
+
       setCardState(prev => ({
         ...prev,
         comments: prev.comments.filter(c => c.id !== commentId),
@@ -195,20 +195,20 @@ function ArticleCard({ article, token, onRefresh }) {
 
   // ========== SAFE PROPERTY ACCESSORS ==========
   const getTitle = () => article?.title || article?.Title || 'Untitled Article';
-  
-  const getDescription = () => 
+
+  const getDescription = () =>
     article?.description || article?.Description || 'No description available';
-  
+
   const getCategory = () =>
     article?.categoryName || article?.CategoryName || article?.category || article?.Category || 'General';
-  
+
   const getCreatorName = () =>
     article?.creatorName || article?.CreatorName || article?.creator?.name || 'Anonymous';
-  
+
   const getCreatedDate = () => {
     const dateStr = article?.createdDate || article?.CreatedDate;
     if (!dateStr) return 'Unknown date';
-    
+
     try {
       return new Date(dateStr).toLocaleDateString('en-US', {
         year: 'numeric',
@@ -219,16 +219,16 @@ function ArticleCard({ article, token, onRefresh }) {
       return 'Unknown date';
     }
   };
-  
+
   const getViewCount = () => article?.viewCount || article?.ViewCount || 0;
   const getCommentCount = () => article?.commentCount || article?.CommentCount || 0;
-  
+
   const getArticleId = () => article?.id || article?.Id;
 
   // ========== FORMAT COMMENT DATE ==========
   const formatCommentDate = (dateStr) => {
     if (!dateStr) return 'Just now';
-    
+
     try {
       const date = new Date(dateStr);
       const now = new Date();
@@ -241,7 +241,7 @@ function ArticleCard({ article, token, onRefresh }) {
       if (diffMins < 60) return `${diffMins}m ago`;
       if (diffHours < 24) return `${diffHours}h ago`;
       if (diffDays < 7) return `${diffDays}d ago`;
-      
+
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     } catch {
       return 'Unknown date';
@@ -266,7 +266,7 @@ function ArticleCard({ article, token, onRefresh }) {
 
   // ========== RENDER COMPONENT ==========
   return (
-    <div 
+    <div
       className="card shadow-sm border-0"
       style={{
         borderRadius: '8px',
@@ -283,7 +283,7 @@ function ArticleCard({ article, token, onRefresh }) {
       <div className="card-body p-4">
         {/* Error Alert */}
         {error && (
-          <div 
+          <div
             className="alert alert-danger alert-dismissible fade show mb-3 border-0"
             role="alert"
             style={{ background: '#f8d7da', borderLeft: '4px solid #dc3545' }}
@@ -303,13 +303,13 @@ function ArticleCard({ article, token, onRefresh }) {
         {/* Header with Badge */}
         <div className="d-flex justify-content-between align-items-start mb-3 gap-2">
           <div className="flex-grow-1">
-            <h5 className="card-title mb-2" style={{ fontWeight: 600, color: '#2c3e50' }}>
+            <h5 className="card-title mb-2" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
               <Link
                 to={`/articles/${getArticleId()}`}
                 className="text-decoration-none"
-                style={{ color: '#2c3e50', transition: 'color 0.2s' }}
-                onMouseEnter={(e) => e.currentTarget.style.color = '#667eea'}
-                onMouseLeave={(e) => e.currentTarget.style.color = '#2c3e50'}
+                style={{ color: 'var(--text-primary)', transition: 'color 0.2s' }}
+                onMouseEnter={(e) => e.currentTarget.style.color = 'var(--primary-color)'}
+                onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
               >
                 {getTitle()}
               </Link>
@@ -319,39 +319,64 @@ function ArticleCard({ article, token, onRefresh }) {
               {getDescription().length > 100 ? '...' : ''}
             </p>
           </div>
-          <span 
-            className="badge"
-            style={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              fontSize: '0.75rem',
-              padding: '0.5rem 0.75rem',
-              borderRadius: '20px',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {getCategory()}
-          </span>
+          <div className="d-flex flex-column gap-2 align-items-end">
+            <span
+              className="badge"
+              style={{
+                background: 'rgba(	124, 58, 237, 0.1)',
+                color: 'var(--secondary-dark)',
+                border: '1px solid rgba(124, 58, 237, 0.2)',
+                fontSize: '0.75rem',
+                padding: '0.25rem 0.75rem',
+                borderRadius: '20px',
+                whiteSpace: 'nowrap',
+                fontWeight: 600
+              }}
+            >
+              {getCategory()}
+            </span>
+            {article.visibility === 'Private' && (
+              <span
+                className="badge"
+                style={{
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  color: 'var(--danger-color)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  fontSize: '0.75rem',
+                  padding: '0.25rem 0.75rem',
+                  borderRadius: '20px',
+                  whiteSpace: 'nowrap',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem'
+                }}
+              >
+                <i className="bi bi-lock-fill" style={{ fontSize: '0.7rem' }}></i> Private
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Meta Information */}
-        <div 
+        <div
           className="d-flex gap-3 text-muted small mb-3 align-items-center flex-wrap"
-          style={{ color: '#6c757d', fontSize: '0.875rem' }}
+          style={{ fontSize: '0.875rem' }}
         >
           <span className="d-flex align-items-center gap-1">
-            <i className="bi bi-person-circle" style={{ fontSize: '1rem' }}></i>
+            <i className="bi bi-person-circle" style={{ fontSize: '1rem', color: 'var(--primary-light)' }}></i>
             {getCreatorName()}
           </span>
           <span className="d-flex align-items-center gap-1">
-            <i className="bi bi-calendar-event" style={{ fontSize: '1rem' }}></i>
+            <i className="bi bi-calendar-event" style={{ fontSize: '1rem', color: 'var(--text-tertiary)' }}></i>
             {getCreatedDate()}
           </span>
           <span className="d-flex align-items-center gap-1">
-            <i className="bi bi-eye" style={{ fontSize: '1rem' }}></i>
+            <i className="bi bi-eye" style={{ fontSize: '1rem', color: 'var(--text-tertiary)' }}></i>
             {getViewCount()} views
           </span>
           <span className="d-flex align-items-center gap-1">
-            <i className="bi bi-chat" style={{ fontSize: '1rem' }}></i>
+            <i className="bi bi-chat" style={{ fontSize: '1rem', color: 'var(--text-tertiary)' }}></i>
             {comments.length || getCommentCount()} comments
           </span>
         </div>
@@ -393,7 +418,7 @@ function ArticleCard({ article, token, onRefresh }) {
           >
             <i className="bi bi-eye me-1"></i>Read Full
           </Link>
-          <button 
+          <button
             className="btn btn-sm btn-outline-secondary ms-auto"
             style={{
               borderRadius: '6px',
@@ -475,7 +500,7 @@ function ArticleCard({ article, token, onRefresh }) {
             {!commentLoading && comments.length > 0 ? (
               <div className="comments-list">
                 {comments.map(comment => (
-                  <div 
+                  <div
                     key={comment.id}
                     className="card card-sm mb-2 border-0"
                     style={{

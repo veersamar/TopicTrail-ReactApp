@@ -1,269 +1,230 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import ArticleCard from './ArticleCard';
 
 function ArticlesFeed({ refreshTrigger }) {
   const { token } = useAuth();
+
+  // State
   const [articles, setArticles] = useState([]);
-  const [filteredArticles, setFilteredArticles] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Filter State
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [categories, setCategories] = useState([]);
-  const [error, setError] = useState(null);
-  const [categoriesLoading, setCategoriesLoading] = useState(true);
 
-  // ========== FETCH CATEGORIES ==========
+  // ========== FETCH DATA ==========
   useEffect(() => {
-    const fetchCategories = async () => {
+    const loadData = async () => {
+      setLoading(true);
+      setError(null);
       try {
-        setCategoriesLoading(true);
-        const data = await api.getCategories();
-        
-        // Validate data is an array
-        if (Array.isArray(data)) {
-          setCategories(data);
+        // Fetch Articles and Categories in parallel
+        const [fetchedArticles, fetchedCategories] = await Promise.all([
+          token ? api.getArticles(token) : Promise.resolve([]),
+          api.getCategories()
+        ]);
+
+        if (Array.isArray(fetchedArticles)) {
+          setArticles(fetchedArticles);
         } else {
-          console.warn('Categories data is not an array:', data);
+          setArticles([]);
+        }
+
+        if (Array.isArray(fetchedCategories)) {
+          setCategories(fetchedCategories);
+        } else {
           setCategories([]);
         }
+
       } catch (err) {
-        console.error('Error fetching categories:', err);
-        setError('Failed to load categories');
-        setCategories([]);
-      } finally {
-        setCategoriesLoading(false);
-      }
-    };
-
-    fetchCategories();
-  }, []);
-
-  // ========== FETCH ARTICLES ==========
-  useEffect(() => {
-    const fetchArticles = async () => {
-      try {
-        
-        if (!token) {
-          console.warn('No token available');
-          setArticles([]);
-          setLoading(false);
-          return;
-        }
-
-        setLoading(true);
-        setError(null);
-
-        const data = await api.getArticles(token);
-        console.log('Articles fetched:', data);
-
-        // Validate data is an array
-        if (Array.isArray(data)) {
-          // Validate each article has required properties
-          const validArticles = data.filter(article => {
-            if (!article || typeof article !== 'object') {
-              console.warn('Invalid article object:', article);
-              return false;
-            }
-            return true;
-          });
-
-          setArticles(validArticles);
-          
-          if (validArticles.length === 0) {
-            console.info('No articles returned from API');
-          }
-        } else {
-          console.error('API response is not an array:', data);
-          setArticles([]);
-          setError('Invalid data format received from server');
-        }
-      } catch (err) {
-        console.error('Error fetching articles:', err);
-        setError(`Failed to load articles: ${err.message}`);
-        setArticles([]);
+        console.error('Error loading feed:', err);
+        setError('Failed to load content.');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchArticles();
+    loadData();
   }, [token, refreshTrigger]);
 
-  // ========== FILTER ARTICLES ==========
-  useEffect(() => {
-    try {
-      // Safely filter articles
-      let filtered = articles.filter(article => {
-        // Skip if article is invalid
-        if (!article || typeof article !== 'object') {
-          return false;
-        }
+  // ========== DERIVED STATE: TRENDING & FILTERED ==========
+  const { trendingArticles, filteredArticles } = useMemo(() => {
+    if (!articles.length) return { trendingArticles: [], filteredArticles: [] };
 
-        // Get safe versions of properties with fallback
-        const title = String(article.title || '').toLowerCase();
-        const description = String(article.description || '').toLowerCase();
-        const safeSearchTerm = String(searchTerm || '').trim().toLowerCase();
+    // 1. Trending: Sort by views (desc), take top 3
+    // Note: Assuming 'viewCount' or 'likes' property exists. If not, fallback to recent.
+    const sortedByPopularity = [...articles].sort((a, b) => {
+      const viewsA = a.viewCount || a.views || 0;
+      const viewsB = b.viewCount || b.views || 0;
+      return viewsB - viewsA;
+    });
+    const trending = sortedByPopularity.slice(0, 3);
 
-        // Search match
-        const matchesSearch = !safeSearchTerm || 
-          title.includes(safeSearchTerm) ||
-          description.includes(safeSearchTerm);
+    // 2. Filtered List (for the main feed)
+    let filtered = articles.filter(article => {
+      const title = (article.title || '').toLowerCase();
+      const desc = (article.description || '').toLowerCase();
+      const search = searchTerm.trim().toLowerCase();
 
-        // Category match
-        let matchesCategory = true;
-        if (selectedCategory !== 'all') {
-          matchesCategory = article.categoryId === parseInt(selectedCategory);
-        }
+      const matchesSearch = !search || title.includes(search) || desc.includes(search);
+      const matchesCategory = selectedCategory === 'all' ||
+        article.categoryId === parseInt(selectedCategory);
 
-        return matchesSearch && matchesCategory;
-      });
+      return matchesSearch && matchesCategory;
+    });
 
-      setFilteredArticles(filtered);
-    } catch (err) {
-      console.error('Error filtering articles:', err);
-      setError('Error filtering articles');
-      setFilteredArticles([]);
-    }
+    return { trendingArticles: trending, filteredArticles: filtered };
   }, [articles, searchTerm, selectedCategory]);
 
-  // ========== RENDER LOADING STATE ==========
+
+  // ========== UI COMPONENTS ==========
+
   if (loading) {
     return (
-      <div className="container-lg my-4" style={{ maxWidth: '900px' }}>
-        <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '400px' }}>
-          <div className="text-center">
-            <div className="spinner-border text-primary mb-3" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-            <p className="text-muted">Loading articles...</p>
-          </div>
-        </div>
+      <div className="container my-5 text-center" style={{ minHeight: '50vh' }}>
+        <div className="spinner-border text-primary mb-3" role="status"></div>
+        <p className="text-muted">Curating your feed...</p>
       </div>
     );
   }
 
-  // ========== RENDER ERROR STATE ==========
   if (error && articles.length === 0) {
     return (
-      <div className="container-lg my-4" style={{ maxWidth: '900px' }}>
-        <div className="alert alert-danger alert-dismissible fade show" role="alert">
-          <i className="bi bi-exclamation-triangle me-2"></i>
-          <strong>Error Loading Articles</strong>
-          <p className="mb-0 mt-2">{error}</p>
-          <button
-            type="button"
-            className="btn-close"
-            onClick={() => setError(null)}
-          ></button>
+      <div className="container my-5">
+        <div className="alert alert-danger shadow-sm border-0">
+          <i className="bi bi-exclamation-triangle-fill me-2"></i> {error}
         </div>
       </div>
     );
   }
 
-  // ========== RENDER MAIN CONTENT ==========
   return (
-    <div className="container-lg my-4" style={{ maxWidth: '900px' }}>
-      {/* Error Alert (non-critical) */}
-      {error && articles.length > 0 && (
-        <div className="alert alert-warning alert-dismissible fade show mb-3" role="alert">
-          <i className="bi bi-exclamation-circle me-2"></i>
-          {error}
-          <button
-            type="button"
-            className="btn-close"
-            onClick={() => setError(null)}
-          ></button>
-        </div>
-      )}
+    <div className="container-lg my-4" style={{ maxWidth: '1100px' }}>
 
-      {/* Filters */}
-      <div className="row g-3 mb-4">
-        <div className="col-md-8">
-          <input
-            type="text"
-            className="form-control form-control-lg"
-            placeholder="🔍 Search articles by title or description..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            disabled={articles.length === 0}
-          />
-        </div>
-        <div className="col-md-4">
-          <select
-            className="form-select form-select-lg"
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            disabled={categoriesLoading || categories.length === 0}
-          >
-            <option key="all" value="all">
-              {categoriesLoading ? 'Loading...' : 'All Categories'}
-            </option>
-            {categories.map((cat, idx) => (
-              <option key={cat?.id ?? `cat-${idx}`} value={cat?.id}>
-                {cat?.name || 'Unnamed Category'}
-              </option>
-            ))}
-          </select>
-          {categories.length === 0 && !categoriesLoading && (
-            <small className="text-warning d-block mt-2">
-              ⚠ No categories available
-            </small>
-          )}
-        </div>
-      </div>
-
-      {/* Articles List */}
-      <div className="row">
-        <div className="col-12">
-          {filteredArticles.length > 0 ? (
-            <>
-              <div className="mb-3">
-                <small className="text-muted">
-                  Showing {filteredArticles.length} of {articles.length} articles
-                </small>
+      {/* SECTION: HERO / TRENDING */}
+      {searchTerm === '' && selectedCategory === 'all' && trendingArticles.length > 0 && (
+        <section className="mb-5 animate-fade-in">
+          <h4 className="fw-bold mb-3 text-secondary">
+            <i className="bi bi-graph-up-arrow me-2 text-primary"></i>Trending Now
+          </h4>
+          <div className="row g-4">
+            {/* Main Featured Article (Left) */}
+            <div className="col-lg-7">
+              <div className="card h-100 border-0 shadow-lg text-white"
+                style={{
+                  background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
+                  borderRadius: '12px',
+                  overflow: 'hidden'
+                }}>
+                <div className="card-body d-flex flex-column justify-content-end p-4 p-lg-5" style={{ minHeight: '300px' }}>
+                  <span className="badge bg-warning text-dark mb-2 align-self-start">
+                    🔥 Top Read
+                  </span>
+                  <h2 className="card-title fw-bold mb-2">{trendingArticles[0].title}</h2>
+                  <p className="card-text mb-3 text-white-50 text-truncate">
+                    {trendingArticles[0].description}
+                  </p>
+                  <div className="d-flex align-items-center gap-3 text-light small">
+                    <span><i className="bi bi-eye me-1"></i> {trendingArticles[0].viewCount || 0} views</span>
+                    <span><i className="bi bi-heart me-1"></i> {trendingArticles[0].likeCount || 0} likes</span>
+                  </div>
+                </div>
               </div>
-              <div className="d-grid gap-3">
-                {filteredArticles.map(article => {
-                  try {
-                    return (
-                      <ArticleCard 
-                        key={article.id} 
-                        article={article} 
-                        token={token} 
-                      />
-                    );
-                  } catch (err) {
-                    console.error('Error rendering article card:', err, article);
-                    return null;
-                  }
-                })}
-              </div>
-            </>
-          ) : (
-            <div className="alert alert-info text-center" role="alert">
-              <i className="bi bi-info-circle me-2"></i>
-              {articles.length === 0
-                ? 'No articles yet. Create one to get started! 📝'
-                : searchTerm || selectedCategory !== 'all'
-                ? 'No articles match your filters. Try adjusting your search.'
-                : 'No articles found.'}
             </div>
-          )}
-        </div>
-      </div>
 
-      {/* Debug Info (development only) */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="alert alert-secondary mt-4 small" style={{ fontSize: '0.85rem' }}>
-          <strong>Debug Info:</strong>
-          <p className="mb-1">Total Articles: {articles.length}</p>
-          <p className="mb-1">Filtered Articles: {filteredArticles.length}</p>
-          <p className="mb-1">Search Term: "{searchTerm}"</p>
-          <p className="mb-0">Selected Category: {selectedCategory}</p>
-        </div>
+            {/* Secondary Trending (Right Stack) */}
+            <div className="col-lg-5 d-flex flex-column gap-4">
+              {trendingArticles.slice(1).map(article => (
+                <div key={article.id} className="card border-0 shadow-sm flex-fill" style={{ borderRadius: '12px' }}>
+                  <div className="card-body d-flex flex-column justify-content-center">
+                    <h6 className="text-muted text-uppercase small mb-1">Trending</h6>
+                    <h5 className="card-title fw-bold text-primary mb-2 text-truncate">{article.title}</h5>
+                    <p className="small text-muted mb-2 text-truncate">{article.description}</p>
+                    <div className="d-flex align-items-center gap-2 small text-secondary">
+                      <i className="bi bi-stopwatch"></i>
+                      <span>Recent Popularity</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
       )}
+
+      {/* SECTION: FILTERS & CATEGORIES */}
+      <section className="mb-4 sticky-top bg-light py-3 border-bottom" style={{ zIndex: 100, top: '0px', margin: '0 -15px', padding: '0 15px' }}>
+        <div className="row g-3 align-items-center">
+          {/* Search */}
+          <div className="col-md-6 col-lg-7">
+            <div className="input-group input-group-lg shadow-sm">
+              <span className="input-group-text bg-white border-end-0">
+                <i className="bi bi-search text-muted"></i>
+              </span>
+              <input
+                type="text"
+                className="form-control border-start-0 ps-0"
+                placeholder="Search for topics, ideas, or guides..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Categories Pills */}
+          <div className="col-md-6 col-lg-5">
+            <select
+              className="form-select form-select-lg shadow-sm"
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+            >
+              <option value="all">📚 All Categories</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION: LATEST ARTICLES FEED */}
+      <section>
+        <h5 className="fw-bold mb-4 text-secondary">
+          {searchTerm || selectedCategory !== 'all' ? 'Search Results' : 'Latest Articles'}
+        </h5>
+
+        {filteredArticles.length > 0 ? (
+          <div className="d-flex flex-column gap-4">
+            {filteredArticles.map(article => (
+              <ArticleCard key={article.id} article={article} token={token} />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-5">
+            <div className="mb-3">
+              <i className="bi bi-journal-x text-muted" style={{ fontSize: '3rem' }}></i>
+            </div>
+            <h5 className="text-muted">No articles found</h5>
+            <p className="text-muted small">Try adjusting your search or category filters.</p>
+          </div>
+        )}
+      </section>
+
+      <style>{`
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }

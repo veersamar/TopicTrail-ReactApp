@@ -1,160 +1,179 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
+import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 
 function CreateArticleModal({ show, onClose, onSuccess }) {
+  // ========== AUTH & STATE ==========
   const { token, userId } = useAuth();
 
-  // ========== STATE ==========
-  const [formData, setFormData] = useState({
-    articleType: '',
-    title: '',
-    description: '',
-    content: '',
-    categoryId: '',
-    subCategoryId: '',
-    intentType: '',
-    audienceType: '',
-    tags: ''
-  });
+  // Wizard Steps: 1: Basics, 2: Content, 3: Classification
+  const [currentStep, setCurrentStep] = useState(1);
+  const totalSteps = 3;
 
   const [formState, setFormState] = useState({
+    loading: false,          // Submitting
+    dataLoading: true,       // Fetching master data
+    errors: {},
+    successMessage: '',
+    // Master data
     articleTypes: [],
     categories: [],
     subCategories: [],
     intentTypes: [],
     audienceTypes: [],
-    loading: false,
-    dataLoading: true,
-    errors: {},
-    successMessage: '',
   });
 
-  // ========== FETCH MASTER DATA ON MOUNT ==========
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    content: '',
+    categoryId: '',
+    subCategoryId: '',
+    articleType: '',
+    intentType: '',
+    audienceType: '',
+    visibility: 'Public', // Default
+    tags: '',
+  });
+
+  // ========== RESET ON OPEN ==========
   useEffect(() => {
     if (show) {
-      fetchAllData();
+      setCurrentStep(1);
+      setFormData({
+        title: '',
+        description: '',
+        content: '',
+        categoryId: '',
+        subCategoryId: '',
+        articleType: '',
+        intentType: '',
+        audienceType: '',
+        visibility: 'Public',
+        tags: '',
+      });
+      setFormState(prev => ({ ...prev, errors: {}, successMessage: '', loading: false }));
+
+      // Fetch data if needed (cache handled in api service)
+      fetchMasterData();
     }
   }, [show]);
 
-  const fetchAllData = useCallback(async () => {
-    setFormState(prev => ({ ...prev, dataLoading: true }));
-    
+  // ========== FETCH MASTER DATA ==========
+  const fetchMasterData = async () => {
     try {
-      const [categoriesData, masterData] = await Promise.all([
+      setFormState(prev => ({ ...prev, dataLoading: true }));
+
+      const [cats, types, intents, audiences] = await Promise.all([
         api.getCategories(),
-        api.getMasterData(),
+        api.getMasterDataByType('ArticleType'),
+        api.getMasterDataByType('IntentType'),
+        api.getMasterDataByType('AudienceType'),
       ]);
 
       setFormState(prev => ({
         ...prev,
-        categories: categoriesData || [],
-        articleTypes: masterData?.data?.ArticleType || [],
-        intentTypes: masterData?.data?.IntentType || [],
-        audienceTypes: masterData?.data?.AudienceType || [],
+        categories: Array.isArray(cats) ? cats : [],
+        articleTypes: types,
+        intentTypes: intents,
+        audienceTypes: audiences,
         dataLoading: false,
       }));
     } catch (error) {
-      console.error('Error fetching data:', error);
-      setFormState(prev => ({
-        ...prev,
-        errors: { fetch: 'Failed to load form data. Please try again.' },
-        dataLoading: false,
-      }));
+      console.error('Error loading form data:', error);
+      setFormState(prev => ({ ...prev, dataLoading: false }));
     }
-  }, []);
+  };
 
-  // ========== FETCH SUB-CATEGORIES WHEN CATEGORY CHANGES ==========
+  // ========== HANDLE SUB-CATEGORIES ==========
   useEffect(() => {
-    if (formData.categoryId) {
-      const fetchSubCategories = async () => {
-        try {
-          const data = await api.getSubCategories(formData.categoryId);
-          setFormState(prev => ({
-            ...prev,
-            subCategories: data || [],
-          }));
-        } catch (error) {
-          console.error('Error fetching subcategories:', error);
-          setFormState(prev => ({
-            ...prev,
-            subCategories: [],
-          }));
-        }
-      };
-      fetchSubCategories();
-      
-      // Reset sub-category selection
-      setFormData(prev => ({ ...prev, subCategoryId: '' }));
-    } else {
-      setFormState(prev => ({ ...prev, subCategories: [] }));
-    }
-  }, [formData.categoryId]);
+    const fetchSubCats = async () => {
+      if (!formData.categoryId) {
+        setFormState(prev => ({ ...prev, subCategories: [] }));
+        return;
+      }
 
-  // ========== FORM VALIDATION ==========
-  const validateForm = useCallback(() => {
-    const newErrors = {};
-    const validations = {
-      articleType: { required: true, message: 'Article Type is required' },
-      title: { required: true, minLength: 5, message: 'Title must be at least 5 characters' },
-      description: { required: true, minLength: 10, message: 'Description must be at least 10 characters' },
-      content: { required: true, minLength: 20, message: 'Content must be at least 20 characters' },
-      categoryId: { required: true, message: 'Category is required' },
-      intentType: { required: true, message: 'Intent Type is required' },
-      audienceType: { required: true, message: 'Audience Type is required' },
+      try {
+        // Find selected category object (optional: to avoid api call if data is embedded)
+        // But api.getSubCategories is standard:
+        const subCats = await api.getSubCategories(formData.categoryId);
+        setFormState(prev => ({ ...prev, subCategories: subCats }));
+      } catch (error) {
+        console.error('Error fetching subcategories:', error);
+      }
     };
 
-    Object.entries(validations).forEach(([field, rules]) => {
-      const value = formData[field];
-      const trimmedValue = typeof value === 'string' ? value.trim() : value;
+    fetchSubCats();
+  }, [formData.categoryId]);
 
-      if (rules.required && !trimmedValue) {
-        newErrors[field] = rules.message;
-      } else if (rules.minLength && trimmedValue.length < rules.minLength) {
-        newErrors[field] = rules.message;
-      }
-    });
-
-    return newErrors;
-  }, [formData]);
-
-  // ========== HANDLE INPUT CHANGE ==========
-  const handleInputChange = useCallback((e) => {
+  // ========== HANDLERS ==========
+  const handleInputChange = (e) => {
     const { name, value } = e.target;
-    
     setFormData(prev => ({
       ...prev,
-      [name]: value,
+      [name]: value
     }));
-    
-    // Clear error for this field
-    setFormState(prev => ({
-      ...prev,
-      errors: { ...prev.errors, [name]: '' },
-    }));
-  }, []);
 
-  // ========== HANDLE FORM SUBMISSION ==========
-  const handleSubmit = useCallback(async (e) => {
-    e.preventDefault();
-    
-    const newErrors = validateForm();
-    if (Object.keys(newErrors).length > 0) {
+    // Clear error for this field
+    if (formState.errors[name]) {
       setFormState(prev => ({
         ...prev,
-        errors: newErrors,
+        errors: { ...prev.errors, [name]: null }
       }));
-      return;
+    }
+  };
+
+  // ========== VALIDATION per STEP ==========
+  const validateStep = (step) => {
+    const newErrors = {};
+    let isValid = true;
+
+    if (step === 1) { // Basics
+      if (!formData.title?.trim()) newErrors.title = 'Title is required';
+      else if (formData.title.length < 5) newErrors.title = 'Title must be at least 5 characters';
+
+      if (!formData.description?.trim()) newErrors.description = 'Description is required';
+
+      if (!formData.articleType) newErrors.articleType = 'Article Type is required';
     }
 
-    setFormState(prev => ({
-      ...prev,
-      loading: true,
-      successMessage: '',
-    }));
+    if (step === 2) { // Content
+      if (!formData.content?.trim()) newErrors.content = 'Content is required';
+      else if (formData.content.length < 20) newErrors.content = 'Content is too short';
+    }
+
+    if (step === 3) { // Classification
+      if (!formData.categoryId) newErrors.categoryId = 'Category is required';
+      if (!formData.intentType) newErrors.intentType = 'Intent Type is required';
+      if (!formData.audienceType) newErrors.audienceType = 'Audience Type is required';
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setFormState(prev => ({ ...prev, errors: newErrors }));
+      isValid = false;
+    }
+
+    return isValid;
+  };
+
+  const handleNext = () => {
+    if (validateStep(currentStep)) {
+      setCurrentStep(prev => Math.min(prev + 1, totalSteps));
+    }
+  };
+
+  const handleBack = () => {
+    setCurrentStep(prev => Math.max(prev - 1, 1));
+  };
+
+
+  // ========== SUBMIT ==========
+  const handleSubmit = async () => {
+    if (!validateStep(3)) return; // Validate final step
 
     try {
+      setFormState(prev => ({ ...prev, loading: true, errors: {} }));
+
       const articleData = {
         title: formData.title.trim(),
         description: formData.description.trim(),
@@ -166,430 +185,345 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
         audienceType: formData.audienceType,
         tags: formData.tags || 'general',
         status: 'Published',
-        visibility: 'Public',
+        visibility: formData.visibility,
       };
 
-      console.log('Submitting article:', articleData);
-      const userId = localStorage.getItem('userId');      
-      const result = await api.createArticle(token, userId, articleData);
-      console.log('Article creation result:', result);
+      console.log('Submitting article data:', articleData);
 
-      // Check if article was created successfully
-      // Success can be indicated by:
-      // 1. result.success === true
-      // 2. result.status === 200 or 201
-      // 3. result.id or result.articleId is present
-      if (result.success || result.status === 200 || result.status === 201 || result.id) {
+      const result = await api.createArticle(token, userId, articleData);
+
+      if (result.success) {
         setFormState(prev => ({
           ...prev,
-          successMessage: `✓ Article "${formData.title}" published successfully!`,
           loading: false,
+          successMessage: 'Article created successfully!',
         }));
 
-        // Reset form
-        setFormData({
-          articleType: '',
-          title: '',
-          description: '',
-          content: '',
-          categoryId: '',
-          subCategoryId: '',
-          intentType: '',
-          audienceType: '',
-          tags: '',
-        });
+        // Notify parent
+        if (onSuccess) onSuccess();
 
+        // Close after brief delay
         setTimeout(() => {
-          onSuccess();
           onClose();
-          setFormState(prev => ({
-            ...prev,
-            successMessage: '',
-            errors: {},
-          }));
-        }, 2000);
+        }, 1500);
       } else {
-        // Article creation failed
-        const errorMsg = result.error || result.message || 'Failed to create article';
         setFormState(prev => ({
           ...prev,
-          errors: { submit: errorMsg },
           loading: false,
+          errors: { submit: result.error || 'Failed to create article' }
         }));
       }
+
     } catch (error) {
-      console.error('Submit error:', error);
+      console.error('Submission error:', error);
       setFormState(prev => ({
         ...prev,
-        errors: { submit: error.message || 'Failed to create article' },
         loading: false,
+        errors: { submit: 'An unexpected error occurred.' }
       }));
     }
-  }, [formData, token, userId, validateForm, onSuccess, onClose]);
-
-  // ========== RENDER DROPDOWN HELPER ==========
-  const renderSelectOptions = (dataArray) => {
-    if (!Array.isArray(dataArray) || dataArray.length === 0) {
-      return null;
-    }
-
-    return dataArray.map(item => (
-      <option key={item.Code || item.Id} value={item.Id}>
-        {item.Name}
-      </option>
-    ));
   };
 
-  // ========== IF MODAL NOT SHOWN ==========
+  // ========== RENDER SELECT OPTIONS ==========
+  const renderSelectOptions = (items) => {
+    if (!Array.isArray(items)) return null;
+    return items.map((item, idx) => {
+      const val = item.id || item.Id || item.value || item.Value || item.name || item.Name;
+      const label = item.name || item.Name || item.value || item.Value;
+      return (
+        <option key={val || idx} value={val}>
+          {label}
+        </option>
+      );
+    });
+  };
+
   if (!show) return null;
 
-  const { 
-    loading, 
-    dataLoading, 
-    errors, 
-    successMessage,
-    articleTypes,
-    categories,
-    subCategories,
-    intentTypes,
-    audienceTypes,
-  } = formState;
+  const { loading, dataLoading, errors, successMessage, articleTypes, categories, subCategories, intentTypes, audienceTypes } = formState;
 
-  // ========== RENDER ==========
   return (
-    <div
-      className="modal show d-block"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
-      onClick={onClose}
-    >
-      <div className="modal-dialog modal-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-content shadow-lg" style={{ borderRadius: '8px' }}>
-          {/* ========== HEADER ========== */}
-          <div 
-            className="modal-header border-0 text-white"
-            style={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              borderRadius: '8px 8px 0 0',
-            }}
-          >
-            <div className="d-flex align-items-center gap-2">
-              <i className="bi bi-pen-fill" style={{ fontSize: '1.25rem' }}></i>
-              <div>
-                <h5 className="modal-title mb-0">Create New Article</h5>
-                <small className="text-light" style={{ opacity: 0.9 }}>Share your knowledge with the community</small>
-              </div>
+    <div className="modal show d-block" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 1050 }}>
+      <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '12px', overflow: 'hidden' }}>
+
+          {/* Header */}
+          <div className="modal-header bg-white border-bottom-0 pb-0">
+            <div>
+              <h5 className="modal-title fw-bold text-primary">
+                {currentStep === 1 && 'Step 1: The Basics'}
+                {currentStep === 2 && 'Step 2: Content Creation'}
+                {currentStep === 3 && 'Step 3: Classification'}
+              </h5>
+              <p className="text-muted small mb-0">Create a new article for the community</p>
             </div>
-            <button
-              type="button"
-              className="btn-close btn-close-white"
-              onClick={onClose}
-              disabled={loading}
-            ></button>
+            <button type="button" className="btn-close" onClick={onClose} disabled={loading}></button>
           </div>
 
-          {/* ========== BODY ========== */}
-          <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-            {/* Success Message */}
+          {/* Progress Bar */}
+          <div className="px-3 pt-3">
+            <div className="progress" style={{ height: '6px', borderRadius: '4px' }}>
+              <div
+                className="progress-bar bg-gradient-primary"
+                role="progressbar"
+                style={{ width: `${(currentStep / totalSteps) * 100}%`, transition: 'width 0.3s ease' }}
+              ></div>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="modal-body p-4">
+
             {successMessage && (
-              <div 
-                className="alert alert-success alert-dismissible fade show border-0 mb-3"
-                role="alert"
-                style={{ background: '#d4edda', borderLeft: '4px solid #28a745' }}
-              >
-                <div className="d-flex align-items-center gap-2">
-                  <i className="bi bi-check-circle" style={{ color: '#28a745' }}></i>
-                  <span>{successMessage}</span>
-                </div>
+              <div className="alert alert-success border-0 shadow-sm mb-3">
+                <i className="bi bi-check-circle-fill me-2"></i> {successMessage}
               </div>
             )}
 
-            {/* Submit Error */}
             {errors.submit && (
-              <div 
-                className="alert alert-danger alert-dismissible fade show border-0 mb-3"
-                role="alert"
-                style={{ background: '#f8d7da', borderLeft: '4px solid #dc3545' }}
-              >
-                <div className="d-flex align-items-center gap-2">
-                  <i className="bi bi-exclamation-circle" style={{ color: '#dc3545' }}></i>
-                  <span>{errors.submit}</span>
-                </div>
-                <button type="button" className="btn-close" onClick={() => setFormState(prev => ({ ...prev, errors: {} }))}></button>
+              <div className="alert alert-danger border-0 shadow-sm mb-3">
+                <i className="bi bi-exclamation-triangle-fill me-2"></i> {errors.submit}
               </div>
             )}
 
-            {/* Data Loading Alert */}
-            {dataLoading && (
-              <div 
-                className="alert alert-info border-0 mb-3"
-                style={{ background: '#d1ecf1', borderLeft: '4px solid #17a2b8' }}
-              >
-                <div className="d-flex align-items-center gap-2">
-                  <div className="spinner-border spinner-border-sm" role="status" style={{ color: '#17a2b8' }}>
-                    <span className="visually-hidden">Loading...</span>
+            {dataLoading ? (
+              <div className="text-center py-5">
+                <div className="spinner-border text-primary" role="status"></div>
+                <p className="mt-2 text-muted">Loading options...</p>
+              </div>
+            ) : (
+              <form>
+                {/* STEP 1: BASICS */}
+                {currentStep === 1 && (
+                  <div className="animate-fade-in">
+                    {/* Title */}
+                    <div className="mb-3">
+                      <label className="form-label fw-600">Title <span className="text-danger">*</span></label>
+                      <input
+                        type="text"
+                        className={`form-control ${errors.title ? 'is-invalid' : ''}`}
+                        name="title"
+                        value={formData.title}
+                        onChange={handleInputChange}
+                        placeholder="e.g., How to Master React Hooks"
+                        autoFocus
+                      />
+                      {errors.title && <div className="invalid-feedback">{errors.title}</div>}
+                    </div>
+
+                    {/* Description */}
+                    <div className="mb-3">
+                      <label className="form-label fw-600">Short Description <span className="text-danger">*</span></label>
+                      <input
+                        type="text"
+                        className={`form-control ${errors.description ? 'is-invalid' : ''}`}
+                        name="description"
+                        value={formData.description}
+                        onChange={handleInputChange}
+                        placeholder="A brief summary (max 300 chars)"
+                        maxLength="300"
+                      />
+                      {errors.description && <div className="invalid-feedback">{errors.description}</div>}
+                    </div>
+
+                    {/* Article Type */}
+                    <div className="mb-3">
+                      <label className="form-label fw-600">Article Type <span className="text-danger">*</span></label>
+                      <select
+                        className={`form-select ${errors.articleType ? 'is-invalid' : ''}`}
+                        name="articleType"
+                        value={formData.articleType}
+                        onChange={handleInputChange}
+                      >
+                        <option value="">Select Type...</option>
+                        {renderSelectOptions(articleTypes)}
+                      </select>
+                      {errors.articleType && <div className="invalid-feedback">{errors.articleType}</div>}
+                    </div>
                   </div>
-                  <span>Loading form data...</span>
-                </div>
-              </div>
+                )}
+
+                {/* STEP 2: CONTENT */}
+                {currentStep === 2 && (
+                  <div className="animate-fade-in">
+                    <div className="mb-3">
+                      <label className="form-label fw-600">Content <span className="text-danger">*</span></label>
+                      <div className="position-relative">
+                        <textarea
+                          className={`form-control ${errors.content ? 'is-invalid' : ''}`}
+                          name="content"
+                          value={formData.content}
+                          onChange={handleInputChange}
+                          rows="12"
+                          placeholder="Write your article here..."
+                          style={{ resize: 'vertical', minHeight: '300px' }}
+                        ></textarea>
+                        {/* Simple toolbar placeholder */}
+                        <div className="position-absolute top-0 end-0 p-2 text-muted small opacity-50">
+                          Markdown Supported
+                        </div>
+                      </div>
+                      {errors.content && <div className="invalid-feedback d-block">{errors.content}</div>}
+                      <div className="text-muted small mt-1 text-end">
+                        {formData.content.length} characters
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 3: CLASSIFICATION */}
+                {currentStep === 3 && (
+                  <div className="animate-fade-in">
+                    <div className="row g-3">
+                      {/* Category */}
+                      <div className="col-md-6">
+                        <label className="form-label fw-600">Category <span className="text-danger">*</span></label>
+                        <select
+                          className={`form-select ${errors.categoryId ? 'is-invalid' : ''}`}
+                          name="categoryId"
+                          value={formData.categoryId}
+                          onChange={handleInputChange}
+                        >
+                          <option value="">Select Category...</option>
+                          {renderSelectOptions(categories)}
+                        </select>
+                        {errors.categoryId && <div className="invalid-feedback">{errors.categoryId}</div>}
+                      </div>
+
+                      {/* Sub Category */}
+                      <div className="col-md-6">
+                        <label className="form-label fw-600">Sub-Category <span className="text-muted">(Optional)</span></label>
+                        <select
+                          className="form-select"
+                          name="subCategoryId"
+                          value={formData.subCategoryId}
+                          onChange={handleInputChange}
+                          disabled={!formData.categoryId || subCategories.length === 0}
+                        >
+                          <option value="">Select Sub-Category...</option>
+                          {renderSelectOptions(subCategories)}
+                        </select>
+                      </div>
+
+                      {/* Intent Type */}
+                      <div className="col-md-6">
+                        <label className="form-label fw-600">Intent <span className="text-danger">*</span></label>
+                        <select
+                          className={`form-select ${errors.intentType ? 'is-invalid' : ''}`}
+                          name="intentType"
+                          value={formData.intentType}
+                          onChange={handleInputChange}
+                        >
+                          <option value="">Select Intent...</option>
+                          {renderSelectOptions(intentTypes)}
+                        </select>
+                        {errors.intentType && <div className="invalid-feedback">{errors.intentType}</div>}
+                      </div>
+
+                      {/* Audience Type */}
+                      <div className="col-md-6">
+                        <label className="form-label fw-600">Target Audience <span className="text-danger">*</span></label>
+                        <select
+                          className={`form-select ${errors.audienceType ? 'is-invalid' : ''}`}
+                          name="audienceType"
+                          value={formData.audienceType}
+                          onChange={handleInputChange}
+                        >
+                          <option value="">Select Audience...</option>
+                          {renderSelectOptions(audienceTypes)}
+                        </select>
+                        {errors.audienceType && <div className="invalid-feedback">{errors.audienceType}</div>}
+                      </div>
+
+                      {/* Visibility */}
+                      <div className="col-md-6">
+                        <label className="form-label fw-600">Visibility</label>
+                        <select
+                          className="form-select"
+                          name="visibility"
+                          value={formData.visibility}
+                          onChange={handleInputChange}
+                        >
+                          <option value="Public">Public (Everyone can see)</option>
+                          <option value="Private">Private (Only you)</option>
+                        </select>
+                      </div>
+
+                      {/* Tags */}
+                      <div className="col-md-6">
+                        <label className="form-label fw-600">Tags</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          name="tags"
+                          value={formData.tags}
+                          onChange={handleInputChange}
+                          placeholder="e.g. react, tutorial"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              </form>
             )}
-
-            {/* ========== FORM FIELDS ========== */}
-            <form>
-              {/* Article Type */}
-              <div className="mb-4">
-                <label className="form-label fw-600" style={{ color: '#333' }}>
-                  <i className="bi bi-bookmark-fill me-2" style={{ color: '#667eea' }}></i>
-                  Article Type <span className="text-danger">*</span>
-                </label>
-                <select
-                  className={`form-select form-select-sm ${errors.articleType ? 'is-invalid' : ''}`}
-                  name="articleType"
-                  value={formData.articleType}
-                  onChange={handleInputChange}
-                  disabled={loading || dataLoading || articleTypes.length === 0}
-                  style={{ borderRadius: '6px' }}
-                >
-                  <option value="">
-                    {articleTypes.length === 0 ? 'Loading...' : 'Select Article Type'}
-                  </option>
-                  {renderSelectOptions(articleTypes)}
-                </select>
-                {errors.articleType && (
-                  <div className="invalid-feedback d-block small">{errors.articleType}</div>
-                )}
-              </div>
-
-              {/* Title */}
-              <div className="mb-4">
-                <label className="form-label fw-600" style={{ color: '#333' }}>
-                  <i className="bi bi-type me-2" style={{ color: '#667eea' }}></i>
-                  Title <span className="text-danger">*</span>
-                </label>
-                <input
-                  type="text"
-                  className={`form-control form-control-sm ${errors.title ? 'is-invalid' : ''}`}
-                  name="title"
-                  value={formData.title}
-                  onChange={handleInputChange}
-                  placeholder="Enter a compelling title..."
-                  disabled={loading}
-                  style={{ borderRadius: '6px' }}
-                  maxLength="200"
-                />
-                {errors.title && (
-                  <div className="invalid-feedback d-block small">{errors.title}</div>
-                )}
-                <small className="text-muted d-block mt-1">
-                  {formData.title.length}/200 characters
-                </small>
-              </div>
-
-              {/* Description */}
-              <div className="mb-4">
-                <label className="form-label fw-600" style={{ color: '#333' }}>
-                  <i className="bi bi-file-text me-2" style={{ color: '#667eea' }}></i>
-                  Description <span className="text-danger">*</span>
-                </label>
-                <input
-                  type="text"
-                  className={`form-control form-control-sm ${errors.description ? 'is-invalid' : ''}`}
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  placeholder="Brief summary of your article..."
-                  disabled={loading}
-                  style={{ borderRadius: '6px' }}
-                  maxLength="300"
-                />
-                {errors.description && (
-                  <div className="invalid-feedback d-block small">{errors.description}</div>
-                )}
-                <small className="text-muted d-block mt-1">
-                  {formData.description.length}/300 characters
-                </small>
-              </div>
-
-              {/* Content */}
-              <div className="mb-4">
-                <label className="form-label fw-600" style={{ color: '#333' }}>
-                  <i className="bi bi-pencil-square me-2" style={{ color: '#667eea' }}></i>
-                  Content <span className="text-danger">*</span>
-                </label>
-                <textarea
-                  className={`form-control form-control-sm ${errors.content ? 'is-invalid' : ''}`}
-                  name="content"
-                  value={formData.content}
-                  onChange={handleInputChange}
-                  rows="6"
-                  placeholder="Write your article content here..."
-                  disabled={loading}
-                  style={{ borderRadius: '6px', fontFamily: '"Segoe UI", sans-serif' }}
-                  maxLength="5000"
-                />
-                {errors.content && (
-                  <div className="invalid-feedback d-block small">{errors.content}</div>
-                )}
-                <small className="text-muted d-block mt-1">
-                  {formData.content.length}/5000 characters | {formData.content.split(/\s+/).filter(w => w).length} words
-                </small>
-              </div>
-
-              {/* Category & Sub-Category Row */}
-              <div className="row mb-4 g-3">
-                <div className="col-md-6">
-                  <label className="form-label fw-600" style={{ color: '#333' }}>
-                    <i className="bi bi-folder me-2" style={{ color: '#667eea' }}></i>
-                    Category <span className="text-danger">*</span>
-                  </label>
-                  <select
-                    className={`form-select form-select-sm ${errors.categoryId ? 'is-invalid' : ''}`}
-                    name="categoryId"
-                    value={formData.categoryId}
-                    onChange={handleInputChange}
-                    disabled={loading || dataLoading || categories.length === 0}
-                    style={{ borderRadius: '6px' }}
-                  >
-                    <option value="">
-                      {categories.length === 0 ? 'Loading...' : 'Select Category'}
-                    </option>
-                    {renderSelectOptions(categories)}
-                  </select>
-                  {errors.categoryId && (
-                    <div className="invalid-feedback d-block small">{errors.categoryId}</div>
-                  )}
-                </div>
-
-                <div className="col-md-6">
-                  <label className="form-label fw-600" style={{ color: '#333' }}>
-                    <i className="bi bi-folder-check me-2" style={{ color: '#667eea' }}></i>
-                    Sub-Category <span className="text-muted">(Optional)</span>
-                  </label>
-                  <select
-                    className="form-select form-select-sm"
-                    name="subCategoryId"
-                    value={formData.subCategoryId}
-                    onChange={handleInputChange}
-                    disabled={loading || !formData.categoryId || subCategories.length === 0}
-                    style={{ borderRadius: '6px' }}
-                  >
-                    <option value="">
-                      {!formData.categoryId ? 'Select category first' : 'Select Sub-Category'}
-                    </option>
-                    {renderSelectOptions(subCategories)}
-                  </select>
-                </div>
-              </div>
-
-              {/* Intent Type */}
-              <div className="mb-4">
-                <label className="form-label fw-600" style={{ color: '#333' }}>
-                  <i className="bi bi-lightbulb me-2" style={{ color: '#667eea' }}></i>
-                  Intent Type <span className="text-danger">*</span>
-                </label>
-                <select
-                  className={`form-select form-select-sm ${errors.intentType ? 'is-invalid' : ''}`}
-                  name="intentType"
-                  value={formData.intentType}
-                  onChange={handleInputChange}
-                  disabled={loading || dataLoading || intentTypes.length === 0}
-                  style={{ borderRadius: '6px' }}
-                >
-                  <option value="">
-                    {intentTypes.length === 0 ? 'Loading...' : 'Select Intent Type'}
-                  </option>
-                  {renderSelectOptions(intentTypes)}
-                </select>
-                {errors.intentType && (
-                  <div className="invalid-feedback d-block small">{errors.intentType}</div>
-                )}
-                <small className="text-muted d-block mt-1">Purpose of your article</small>
-              </div>
-
-              {/* Audience Type */}
-              <div className="mb-4">
-                <label className="form-label fw-600" style={{ color: '#333' }}>
-                  <i className="bi bi-people me-2" style={{ color: '#667eea' }}></i>
-                  Audience Type <span className="text-danger">*</span>
-                </label>
-                <select
-                  className={`form-select form-select-sm ${errors.audienceType ? 'is-invalid' : ''}`}
-                  name="audienceType"
-                  value={formData.audienceType}
-                  onChange={handleInputChange}
-                  disabled={loading || dataLoading || audienceTypes.length === 0}
-                  style={{ borderRadius: '6px' }}
-                >
-                  <option value="">
-                    {audienceTypes.length === 0 ? 'Loading...' : 'Select Audience Type'}
-                  </option>
-                  {renderSelectOptions(audienceTypes)}
-                </select>
-                {errors.audienceType && (
-                  <div className="invalid-feedback d-block small">{errors.audienceType}</div>
-                )}
-                <small className="text-muted d-block mt-1">Target audience for this article</small>
-              </div>
-
-              {/* Tags */}
-              <div className="mb-4">
-                <label className="form-label fw-600" style={{ color: '#333' }}>
-                  <i className="bi bi-tags me-2" style={{ color: '#667eea' }}></i>
-                  Tags <span className="text-muted">(Optional)</span>
-                </label>
-                <input
-                  type="text"
-                  className="form-control form-control-sm"
-                  name="tags"
-                  value={formData.tags}
-                  onChange={handleInputChange}
-                  placeholder="e.g., technology, tutorial, news"
-                  disabled={loading}
-                  style={{ borderRadius: '6px' }}
-                  maxLength="200"
-                />
-                <small className="text-muted d-block mt-1">
-                  Comma-separated keywords to help readers find your article
-                </small>
-              </div>
-            </form>
           </div>
 
-          {/* ========== FOOTER ========== */}
-          <div className="modal-footer border-top-0 bg-light" style={{ borderRadius: '0 0 8px 8px' }}>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={onClose}
-              disabled={loading}
-              style={{ borderRadius: '6px' }}
-            >
-              <i className="bi bi-x-circle me-1"></i>Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={loading || dataLoading}
-              className="btn btn-primary btn-sm"
-              style={{
-                borderRadius: '6px',
-                background: loading ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                border: 'none',
-              }}
-            >
-              {loading ? (
-                <>
-                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                  Publishing...
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-check-circle me-1"></i>Publish Article
-                </>
-              )}
-            </button>
+          {/* Footer - Navigation Buttons */}
+          <div className="modal-footer border-top-0 pt-0">
+            {currentStep > 1 && (
+              <button
+                type="button"
+                className="btn btn-outline-secondary px-4 rounded-pill"
+                onClick={handleBack}
+                disabled={loading}
+              >
+                Back
+              </button>
+            )}
+
+            {currentStep < 3 ? (
+              <button
+                type="button"
+                className="btn btn-primary px-4 rounded-pill"
+                onClick={handleNext}
+                disabled={loading || dataLoading}
+              >
+                Next Step <i className="bi bi-arrow-right ms-2"></i>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-success px-5 rounded-pill shadow-sm"
+                onClick={handleSubmit}
+                disabled={loading || dataLoading}
+                style={{ fontWeight: 600 }}
+              >
+                {loading ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    Publishing...
+                  </>
+                ) : (
+                  'Publish Article'
+                )}
+              </button>
+            )}
           </div>
         </div>
       </div>
+      <style>{`
+        .bg-gradient-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }

@@ -15,6 +15,13 @@ const handleResponse = async (res) => {
 
   // Success case (2xx status)
   if (res.ok) {
+    if (Array.isArray(data)) {
+      return {
+        success: true,
+        status: res.status,
+        data: data
+      };
+    }
     return {
       success: true,
       status: res.status,
@@ -57,8 +64,8 @@ export const api = {
       return await handleResponse(res);
     } catch (error) {
       console.error('Login error:', error);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error.message || 'Login failed',
         status: error.status,
       };
@@ -75,8 +82,8 @@ export const api = {
       return await handleResponse(res);
     } catch (error) {
       console.error('Register error:', error);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error.message || 'Registration failed',
         status: error.status,
       };
@@ -92,8 +99,8 @@ export const api = {
       return await handleResponse(res);
     } catch (error) {
       console.error('OTP verification error:', error);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error.message || 'OTP verification failed',
         status: error.status,
       };
@@ -136,10 +143,10 @@ export const api = {
         },
         body: JSON.stringify(data),
       });
-      
+
       const response = await handleResponse(res);
       console.log('Create article response:', response);
-      
+
       return {
         success: response.success || response.status === 200 || response.status === 201,
         id: response.id || response.articleId,
@@ -148,8 +155,8 @@ export const api = {
       };
     } catch (error) {
       console.error('Error creating article:', error);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error.message || 'Failed to create article',
         status: error.status,
       };
@@ -167,14 +174,14 @@ export const api = {
         body: JSON.stringify(data),
       });
       const response = await handleResponse(res);
-      return { 
+      return {
         success: response.success || response.status === 200,
         ...response,
       };
     } catch (error) {
       console.error('Error updating article:', error);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error.message || 'Failed to update article',
         status: error.status,
       };
@@ -188,14 +195,14 @@ export const api = {
         headers: { Authorization: `Bearer ${token}` },
       });
       const response = await handleResponse(res);
-      return { 
+      return {
         success: response.success || response.status === 200,
         ...response,
       };
     } catch (error) {
       console.error('Error deleting article:', error);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error.message || 'Failed to delete article',
         status: error.status,
       };
@@ -209,7 +216,8 @@ export const api = {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const data = await handleResponse(res);
-      return Array.isArray(data) ? data : data.articles || [];
+      // Check data.data (array response) -> data (array response old? no) -> data.articles (object response)
+      return Array.isArray(data.data) ? data.data : (Array.isArray(data.articles) ? data.articles : []);
     } catch (error) {
       console.error('Error searching articles:', error);
       return [];
@@ -221,13 +229,13 @@ export const api = {
     try {
       const res = await fetch(
         `${API_BASE_URL}/api/article/${articleId}/like?userId=${userId}`,
-        { 
-          method: 'POST', 
-          headers: { Authorization: `Bearer ${token}` } 
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` }
         }
       );
       const response = await handleResponse(res);
-      return { 
+      return {
         success: response.success || response.status === 200,
         ...response,
       };
@@ -241,13 +249,13 @@ export const api = {
     try {
       const res = await fetch(
         `${API_BASE_URL}/api/article/${articleId}/like?userId=${userId}`,
-        { 
-          method: 'DELETE', 
-          headers: { Authorization: `Bearer ${token}` } 
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` }
         }
       );
       const response = await handleResponse(res);
-      return { 
+      return {
         success: response.success || response.status === 200,
         ...response,
       };
@@ -268,10 +276,10 @@ export const api = {
       const res = await fetch(`${API_BASE_URL}/api/category/categories`);
       const data = await handleResponse(res);
       const categories = Array.isArray(data.data) ? data.data : [];
-      
+
       cache.categories = categories;
       cache.lastFetch['categories'] = Date.now();
-      
+
       return categories;
     } catch (error) {
       console.error('Error fetching categories:', error);
@@ -306,10 +314,10 @@ export const api = {
 
       const res = await fetch(`${API_BASE_URL}/api/masterdata/all`);
       const data = await handleResponse(res);
-      
+
       cache.masterData = data;
       cache.lastFetch['masterData'] = Date.now();
-      
+
       return data;
     } catch (error) {
       console.error('Error fetching master data:', error);
@@ -321,7 +329,8 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/api/masterdata/${type}`);
       const data = await handleResponse(res);
-      return Array.isArray(data) ? data : [];
+      // Data might be in data.data (from array wrap) or just data (if handleResponse spread it and I missed something)
+      return Array.isArray(data.data) ? data.data : [];
     } catch (error) {
       console.error(`Error fetching master data for type ${type}:`, error);
       return [];
@@ -351,7 +360,7 @@ export const api = {
   createComment: async (token, articleId, content, userId) => {
     try {
       console.log('Creating comment:', { articleId, userId, content });
-      
+
       const res = await fetch(
         `${API_BASE_URL}/api/comment/article/${articleId}?userId=${userId}`,
         {
@@ -363,10 +372,10 @@ export const api = {
           body: JSON.stringify({ content }),
         }
       );
-      
+
       const response = await handleResponse(res);
       console.log('Create comment response:', response);
-      
+
       return {
         success: response.success || response.status === 200 || response.status === 201,
         id: response.id || response.commentId,
@@ -377,8 +386,8 @@ export const api = {
       };
     } catch (error) {
       console.error('Error creating comment:', error);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error.message || 'Failed to create comment',
         status: error.status,
       };
@@ -392,14 +401,14 @@ export const api = {
         headers: { Authorization: `Bearer ${token}` },
       });
       const response = await handleResponse(res);
-      return { 
+      return {
         success: response.success || response.status === 200,
         ...response,
       };
     } catch (error) {
       console.error('Error deleting comment:', error);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error.message || 'Failed to delete comment',
         status: error.status,
       };
@@ -430,14 +439,14 @@ export const api = {
         body: JSON.stringify(data),
       });
       const response = await handleResponse(res);
-      return { 
+      return {
         success: response.success || response.status === 200,
         ...response,
       };
     } catch (error) {
       console.error('Error updating profile:', error);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error.message || 'Failed to update profile',
         status: error.status,
       };
@@ -450,7 +459,7 @@ export const api = {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await handleResponse(res);
-      return Array.isArray(data) ? data : [];
+      return Array.isArray(data.data) ? data.data : [];
     } catch (error) {
       console.error('Error fetching login history:', error);
       return [];

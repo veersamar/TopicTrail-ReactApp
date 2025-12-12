@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import './LoginPage.css';
 
 function LoginPage() {
   const [formData, setFormData] = useState({
@@ -13,7 +14,6 @@ function LoginPage() {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
       navigate('/articles');
@@ -56,80 +56,69 @@ function LoginPage() {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: 'var(--light-bg)',
-      padding: 'var(--spacing-lg)'
-    }}>
-      <div style={{
-        width: '100%',
-        maxWidth: '400px',
-        backgroundColor: 'white',
-        borderRadius: 'var(--radius-lg)',
-        boxShadow: 'var(--shadow-lg)',
-        padding: 'var(--spacing-xxl)'
-      }}>
-        <h2 style={{ textAlign: 'center', marginBottom: 'var(--spacing-lg)' }}>
-          Welcome Back
-        </h2>
+    <div className="login-container">
+      <div className="login-card glass-panel fade-in">
+        <div className="text-center mb-4">
+          <h1 className="brand-title">TopicTrail</h1>
+          <p className="text-muted">Welcome back! Please login to your account.</p>
+        </div>
 
         {error && (
-          <div className="alert alert-danger" style={{ marginBottom: 'var(--spacing-md)' }}>
-            {error}
+          <div className="alert alert-danger fade-in">
+            <i className="bi bi-exclamation-triangle-fill"></i>
+            <span>{error}</span>
           </div>
         )}
 
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 'var(--spacing-lg)' }}>
-            <label style={{ display: 'block', marginBottom: 'var(--spacing-sm)', fontWeight: 600 }}>
-              Email
-            </label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="Enter your email"
-              disabled={loading}
-            />
+          <div className="form-group mb-3">
+            <label className="form-label">Email Address</label>
+            <div className="input-with-icon">
+              <i className="bi bi-envelope"></i>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="Enter your email"
+                disabled={loading}
+              />
+            </div>
           </div>
 
-          <div style={{ marginBottom: 'var(--spacing-xl)' }}>
-            <label style={{ display: 'block', marginBottom: 'var(--spacing-sm)', fontWeight: 600 }}>
-              Password
-            </label>
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="Enter your password"
-              disabled={loading}
-            />
+          <div className="form-group mb-4">
+            <label className="form-label">Password</label>
+            <div className="input-with-icon">
+              <i className="bi bi-lock"></i>
+              <input
+                type="password"
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="Enter your password"
+                disabled={loading}
+              />
+            </div>
           </div>
 
           <button
             type="submit"
-            className="btn-primary w-100"
+            className="btn btn-primary w-100 btn-lg mb-3"
             disabled={loading}
-            style={{ marginBottom: 'var(--spacing-md)' }}
           >
             {loading ? (
               <>
-                <span className="spinner-border spinner-border-sm" style={{ marginRight: '0.5rem' }}></span>
+                <div className="spinner-border spinner-border-sm me-2"></div>
                 Logging in...
               </>
             ) : (
-              'Login'
+              'Sign In'
             )}
           </button>
 
-          <div style={{ textAlign: 'center' }}>
-            <span className="text-secondary">Don't have an account? </span>
-            <Link to="/register">Register here</Link>
+          <div className="text-center">
+            <span className="text-secondary">New to TopicTrail? </span>
+            <Link to="/register" className="fw-600">Create an account</Link>
           </div>
         </form>
       </div>

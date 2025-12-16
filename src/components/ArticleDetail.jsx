@@ -388,28 +388,30 @@ function ArticleDetail() {
           </div>
 
           {/* Article Type, Intent, Audience */}
-          <div className="mb-4 p-3 bg-light" style={{ borderRadius: '6px' }}>
-            <div className="row g-3 small">
-              {getArticleType() && (
-                <div className="col-md-4">
-                  <strong style={{ color: '#667eea' }}>Article Type</strong>
-                  <p className="text-muted mb-0">{getArticleType()}</p>
-                </div>
-              )}
-              {getIntentType() && (
-                <div className="col-md-4">
-                  <strong style={{ color: '#667eea' }}>Intent</strong>
-                  <p className="text-muted mb-0">{getIntentType()}</p>
-                </div>
-              )}
-              {getAudienceType() && (
-                <div className="col-md-4">
-                  <strong style={{ color: '#667eea' }}>Audience</strong>
-                  <p className="text-muted mb-0">{getAudienceType()}</p>
-                </div>
-              )}
+          {(getArticleType() || getIntentType() || getAudienceType()) && (
+            <div className="mb-4 p-3 bg-light" style={{ borderRadius: '6px' }}>
+              <div className="row g-3 small">
+                {getArticleType() && (
+                  <div className="col-md-4">
+                    <strong style={{ color: '#667eea' }}>Article Type</strong>
+                    <p className="text-muted mb-0">{getArticleType()}</p>
+                  </div>
+                )}
+                {getIntentType() && (
+                  <div className="col-md-4">
+                    <strong style={{ color: '#667eea' }}>Intent</strong>
+                    <p className="text-muted mb-0">{getIntentType()}</p>
+                  </div>
+                )}
+                {getAudienceType() && (
+                  <div className="col-md-4">
+                    <strong style={{ color: '#667eea' }}>Audience</strong>
+                    <p className="text-muted mb-0">{getAudienceType()}</p>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Article Actions */}
           <div className="d-flex gap-2 mb-4 flex-wrap">

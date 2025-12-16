@@ -100,49 +100,60 @@ function Navigation({ onCreateClick }) {
             + Create Article
           </button>
 
-          {/* User Menu */}
-          <div className="user-menu-wrapper" ref={dropdownRef}>
-            <button
-              className="user-profile-btn"
-              onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-              aria-expanded={isUserDropdownOpen}
-            >
-              <span className="profile-avatar">
-                {getUserAvatar()}
-              </span>
-              <span className="profile-name">{getUserDisplayName()}</span>
-              <span className="dropdown-arrow">▼</span>
-            </button>
-
-            {/* Dropdown Menu */}
-            <div className={`dropdown-menu ${isUserDropdownOpen ? 'show' : ''}`}>
-              <div className="dropdown-item-text text-muted small px-3 py-2 border-bottom">
-                Signed in as <br />
-                <strong>{getUserDisplayName()}</strong>
-              </div>
-              <Link
-                to="/profile"
-                className="dropdown-item"
-                onClick={() => setIsUserDropdownOpen(false)}
-              >
-                👤 Profile
+          {/* Auth Buttons or User Menu */}
+          {!user ? (
+            <div className="auth-buttons">
+              <Link to="/login" className="btn-login" onClick={() => setIsMenuOpen(false)}>
+                Log In
               </Link>
-              <Link
-                to="/settings"
-                className="dropdown-item"
-                onClick={() => setIsUserDropdownOpen(false)}
-              >
-                ⚙️ Settings
+              <Link to="/register" className="btn-register" onClick={() => setIsMenuOpen(false)}>
+                Sign Up
               </Link>
-              <div className="dropdown-divider"></div>
-              <button
-                className="dropdown-item logout"
-                onClick={handleLogout}
-              >
-                🚪 Logout
-              </button>
             </div>
-          </div>
+          ) : (
+            <div className="user-menu-wrapper" ref={dropdownRef}>
+              <button
+                className="user-profile-btn"
+                onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+                aria-expanded={isUserDropdownOpen}
+              >
+                <span className="profile-avatar">
+                  {getUserAvatar()}
+                </span>
+                <span className="profile-name">{getUserDisplayName()}</span>
+                <span className="dropdown-arrow">▼</span>
+              </button>
+
+              {/* Dropdown Menu */}
+              <div className={`dropdown-menu ${isUserDropdownOpen ? 'show' : ''}`}>
+                <div className="dropdown-item-text text-muted small px-3 py-2 border-bottom">
+                  Signed in as <br />
+                  <strong>{getUserDisplayName()}</strong>
+                </div>
+                <Link
+                  to="/profile"
+                  className="dropdown-item"
+                  onClick={() => setIsUserDropdownOpen(false)}
+                >
+                  👤 Profile
+                </Link>
+                <Link
+                  to="/settings"
+                  className="dropdown-item"
+                  onClick={() => setIsUserDropdownOpen(false)}
+                >
+                  ⚙️ Settings
+                </Link>
+                <div className="dropdown-divider"></div>
+                <button
+                  className="dropdown-item logout"
+                  onClick={handleLogout}
+                >
+                  🚪 Logout
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </nav>

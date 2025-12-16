@@ -6,6 +6,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import Register from './pages/Register';
 import OtpVerification from './pages/OtpVerification';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
 
@@ -69,6 +71,8 @@ function AppContent() {
       <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/articles" replace />} />
       <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/articles" replace />} />
       <Route path="/verify-otp" element={<OtpVerification />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* ========== PROTECTED APP ROUTES ========== */}
       <Route

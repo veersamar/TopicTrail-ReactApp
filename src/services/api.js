@@ -112,6 +112,43 @@ export const api = {
     }
   },
 
+  forgotPassword: async (email) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      return await handleResponse(res);
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to process request',
+        status: error.status,
+      };
+    }
+  },
+
+  resetPassword: async (data) => {
+    // data: { email, token, newPassword }
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      return await handleResponse(res);
+    } catch (error) {
+      console.error('Reset password error:', error);
+      return {
+        success: false,
+        error: error.message || 'Password reset failed',
+        status: error.status,
+      };
+    }
+  },
+
   // ==================== ARTICLE ENDPOINTS ====================
   getArticles: async (token, pageNumber = 1) => {
     try {

@@ -119,6 +119,12 @@ function LoginPage() {
             </div>
           </div>
 
+          <div className="d-flex justify-content-end mb-4">
+            <Link to="/forgot-password" style={{ fontSize: '0.9rem', color: 'var(--primary-color)', textDecoration: 'none' }}>
+              Forgot Password?
+            </Link>
+          </div>
+
           <button
             type="submit"
             className="btn btn-primary w-100 btn-lg mb-3"

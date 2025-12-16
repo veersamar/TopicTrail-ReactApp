@@ -52,10 +52,50 @@ export const AuthProvider = ({ children }) => {
         email,
         password
       });
-      // Normalize response shapes: some backends return { token, user }, others return { accessToken, data: { user } }, etc.
+
       const res = response?.data || {};
-      const respToken = res.token || res.accessToken || res.access_token || res.data?.token || res.data?.accessToken;
-      const userData = res.user || res.data?.user || res.data || res.userProfile || res.data?.userProfile || null;
+      console.log('Login Response Raw:', res);
+
+      // Helper to find value by case-insensitive key
+      const getCaseInsensitive = (obj, key) => {
+        if (!obj) return null;
+        const k = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+        return k ? obj[k] : null;
+      };
+
+      // 1. Try to find Token
+      let respToken = getCaseInsensitive(res, 'token') ||
+        getCaseInsensitive(res, 'accessToken') ||
+        getCaseInsensitive(res, 'jwt'); // common names
+
+      // Check inside 'data' or 'result' wrapper
+      if (!respToken) {
+        const dataObj = getCaseInsensitive(res, 'data') || getCaseInsensitive(res, 'result');
+        if (dataObj) {
+          respToken = getCaseInsensitive(dataObj, 'token') || getCaseInsensitive(dataObj, 'accessToken');
+        }
+      }
+
+      // 2. Try to find User object
+      let userData = getCaseInsensitive(res, 'user') || getCaseInsensitive(res, 'userProfile');
+
+      if (!userData) {
+        const dataObj = getCaseInsensitive(res, 'data') || getCaseInsensitive(res, 'result');
+        if (dataObj) {
+          userData = getCaseInsensitive(dataObj, 'user') || getCaseInsensitive(dataObj, 'userProfile');
+          // If dataObj itself looks like a user (has 'email' or 'id'/'userId'), use it
+          if (!userData && (getCaseInsensitive(dataObj, 'email') || getCaseInsensitive(dataObj, 'id') || getCaseInsensitive(dataObj, 'userId'))) {
+            userData = dataObj;
+          }
+        }
+      }
+
+      // Fallback: if we have a token but no user object, maybe the top level res is the user?
+      if (!userData && respToken && (getCaseInsensitive(res, 'email') || getCaseInsensitive(res, 'id'))) {
+        userData = res;
+      }
+
+      console.log('Parsed Auth Data:', { respToken, userData });
 
       // Persist token if present
       if (respToken) {
@@ -64,7 +104,7 @@ export const AuthProvider = ({ children }) => {
         axios.defaults.headers.common['Authorization'] = `Bearer ${respToken}`;
       }
 
-      // Persist user if present (try to normalize common shapes)
+      // Persist user if present
       if (userData) {
         try {
           localStorage.setItem('user', JSON.stringify(userData));
@@ -74,10 +114,9 @@ export const AuthProvider = ({ children }) => {
         setUser(userData);
       }
 
-      // Update auth flag if we have a token (or at least user)
-      setIsAuthenticated(!!respToken || !!userData);
+      setIsAuthenticated(!!respToken);
 
-      return { success: !!respToken || !!userData, user: userData, token: respToken };
+      return { success: !!respToken, user: userData, token: respToken };
     } catch (error) {
       console.error('Login error:', error);
       return {
@@ -105,8 +144,6 @@ export const AuthProvider = ({ children }) => {
 
       console.log('Registration Payload:', payload); // Debug
 
-      // Use the API service URL resolution by accessing env var in same way or just use the same URL logic
-      // Ideally we should use the api.service here, but let's stick to axios for minimal diff, just fixing the payload.
       const baseUrl = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== 'undefined' && process.env.REACT_APP_API_URL.startsWith('http')
         ? process.env.REACT_APP_API_URL
         : 'https://localhost:7083';
@@ -148,16 +185,50 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
   };
 
+  // Helper to extract nested properties case-insensitively
+  const getNestedValue = (obj, key) => {
+    if (!obj) return null;
+    // Direct
+    const k = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+    if (k) return obj[k];
+    return null;
+  };
+
+  const extractUserId = (u) => {
+    if (!u) return null;
+    // 1. Direct Id/UserId
+    let id = getNestedValue(u, 'id') || getNestedValue(u, 'userId') || getNestedValue(u, 'user_id');
+    if (id) return id;
+
+    // 2. Nested User object? (u.User.Id)
+    const cachedUserObj = getNestedValue(u, 'user');
+    if (cachedUserObj) {
+      id = getNestedValue(cachedUserObj, 'id') || getNestedValue(cachedUserObj, 'userId');
+      if (id) return id;
+    }
+
+    // 3. Nested Data object?
+    const cachedDataObj = getNestedValue(u, 'data');
+    if (cachedDataObj) {
+      id = getNestedValue(cachedDataObj, 'id') || getNestedValue(cachedDataObj, 'userId');
+      if (id) return id;
+    }
+
+    return null;
+  };
+
   const value = {
     user,
     token,
-    // Provide a normalized userId for consumers
-    userId: user?.id || user?.Id || user?.userId || user?.user?.id || null,
+    // Robust extraction of ID
+    userId: extractUserId(user),
     isAuthenticated,
     loading,
     login,
     register,
     verifyOtp: api.verifyOtp, // Direct mapping since api.js handles it well
+    forgotPassword: api.forgotPassword,
+    resetPassword: api.resetPassword,
     logout,
     setUser
   };

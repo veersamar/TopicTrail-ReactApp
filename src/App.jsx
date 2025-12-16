@@ -5,15 +5,15 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 // Pages
 import LoginPage from './pages/LoginPage';
 import Register from './pages/Register';
+import OtpVerification from './pages/OtpVerification';
 import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
 
 // Components
-import Navbar from './components/Navigation';
+// Components
+import MainLayout from './components/MainLayout';
 import ArticlesFeed from './components/ArticlesFeed';
 import ArticleDetail from './components/ArticleDetail';
-import CreateArticleModal from './components/CreateArticleModal';
-import TrendingSidebar from './components/TrendingSidebar';
 
 // ========== PROTECTED ROUTE COMPONENT ==========
 function ProtectedRoute({ children }) {
@@ -45,12 +45,6 @@ function ProtectedRoute({ children }) {
 // ========== MAIN APP CONTENT ==========
 function AppContent() {
   const { isAuthenticated, loading } = useAuth();
-  const [showCreateModal, setShowCreateModal] = React.useState(false);
-  const [refreshTrigger, setRefreshTrigger] = React.useState(0);
-
-  const handleCreateSuccess = () => {
-    setRefreshTrigger(prev => prev + 1);
-  };
 
   // Show loading while checking auth state
   if (loading) {
@@ -60,7 +54,7 @@ function AppContent() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#f8f9fa'
+        backgroundColor: 'var(--bg-body)'
       }}>
         <div className="spinner-border" role="status">
           <span className="visually-hidden">Loading authentication...</span>
@@ -70,94 +64,44 @@ function AppContent() {
   }
 
   return (
-    <>
-      {/* Show Navbar only when authenticated */}
-      {isAuthenticated && (
-        <>
-          <Navbar onCreateClick={() => setShowCreateModal(true)} />
+    <Routes>
+      {/* ========== AUTH ROUTES ========== */}
+      <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/articles" replace />} />
+      <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/articles" replace />} />
+      <Route path="/verify-otp" element={<OtpVerification />} />
 
-          {/* Create Article Modal */}
-          <CreateArticleModal
-            show={showCreateModal}
-            onClose={() => setShowCreateModal(false)}
-            onSuccess={handleCreateSuccess}
-          />
-        </>
-      )}
+      {/* ========== PROTECTED APP ROUTES ========== */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <MainLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/articles" element={<ArticlesFeed />} />
+        <Route path="/questions" element={<ArticlesFeed />} /> {/* Alias for now */}
+        <Route path="/articles/:id" element={<ArticleDetail />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/my-articles" element={<ArticlesFeed />} />
+        <Route path="/tags" element={<div className="p-4">Tags (Coming Soon)</div>} />
+        <Route path="/users" element={<div className="p-4">Users (Coming Soon)</div>} />
+        <Route path="/settings" element={
+          <div className="container-lg my-5">
+            <h2>Settings</h2>
+            <p>Coming soon...</p>
+          </div>
+        } />
+      </Route>
 
-      {/* Routes */}
-      <Routes>
-        {/* ========== AUTH ROUTES ========== */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<Register />} />
+      {/* ========== DEFAULT ROUTES ========== */}
+      <Route
+        path="/"
+        element={<Navigate to={isAuthenticated ? "/articles" : "/login"} replace />}
+      />
 
-        {/* ========== PROTECTED ARTICLES ROUTES ========== */}
-        <Route
-          path="/articles"
-          element={
-            <ProtectedRoute>
-              <div className="articles-layout">
-                <ArticlesFeed refreshTrigger={refreshTrigger} />
-                {isAuthenticated && <TrendingSidebar />}
-              </div>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/articles/:id"
-          element={
-            <ProtectedRoute>
-              <ArticleDetail />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* ========== PROTECTED USER ROUTES ========== */}
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <Profile />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/my-articles"
-          element={
-            <ProtectedRoute>
-              <ArticlesFeed />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <ProtectedRoute>
-              <div className="container-lg my-5">
-                <h2>Settings</h2>
-                <p>Coming soon...</p>
-              </div>
-            </ProtectedRoute>
-          }
-        />
-
-        {/* ========== DEFAULT ROUTES ========== */}
-        {/* Redirect root based on auth status */}
-        <Route
-          path="/"
-          element={
-            isAuthenticated ? (
-              <Navigate to="/articles" replace />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-
-        {/* 404 NOT FOUND */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </>
+      {/* 404 NOT FOUND */}
+      <Route path="*" element={<NotFound />} />
+    </Routes>
   );
 }
 

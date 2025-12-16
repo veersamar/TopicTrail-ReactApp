@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './LoginPage.css';
 
@@ -9,16 +9,27 @@ function LoginPage() {
     password: ''
   });
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (isAuthenticated) {
       navigate('/articles');
     }
   }, [isAuthenticated, navigate]);
+
+  // Check for success message from other pages (e.g. OTP verification)
+  useEffect(() => {
+    if (location.state?.message) {
+      setMessage(location.state.message);
+      // Optional: clear state so refresh doesn't show it again, but usually fine
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -62,6 +73,13 @@ function LoginPage() {
           <h1 className="brand-title">TopicTrail</h1>
           <p className="text-muted">Welcome back! Please login to your account.</p>
         </div>
+
+        {message && (
+          <div className="alert alert-success fade-in mb-3">
+            <i className="bi bi-check-circle-fill me-2"></i>
+            <span>{message}</span>
+          </div>
+        )}
 
         {error && (
           <div className="alert alert-danger fade-in">

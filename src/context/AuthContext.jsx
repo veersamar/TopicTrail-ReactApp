@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
+import { api } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -86,40 +87,49 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (username, email, password) => {
+  const register = async (userDataOrUsername, email, password) => {
     try {
-      const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/auth/register`, {
-        username,
-        email,
-        password
-      });
-      const res = response?.data || {};
-      const respToken = res.token || res.accessToken || res.access_token || res.data?.token || res.data?.accessToken;
-      const userData = res.user || res.data?.user || res.data || res.userProfile || res.data?.userProfile || null;
+      let payload = {};
 
-      if (respToken) {
-        localStorage.setItem('authToken', respToken);
-        setToken(respToken);
-        axios.defaults.headers.common['Authorization'] = `Bearer ${respToken}`;
+      if (typeof userDataOrUsername === 'object') {
+        // New usage: register({ ...allFields })
+        payload = userDataOrUsername;
+      } else {
+        // Legacy usage: register(username, email, password)
+        payload = {
+          username: userDataOrUsername,
+          email,
+          password
+        };
       }
 
-      if (userData) {
-        try {
-          localStorage.setItem('user', JSON.stringify(userData));
-        } catch (e) {
-          console.warn('Failed to stringify user for localStorage', e);
-        }
-        setUser(userData);
-      }
+      console.log('Registration Payload:', payload); // Debug
 
-      setIsAuthenticated(!!respToken || !!userData);
+      // Use the API service URL resolution by accessing env var in same way or just use the same URL logic
+      // Ideally we should use the api.service here, but let's stick to axios for minimal diff, just fixing the payload.
+      const baseUrl = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== 'undefined' && process.env.REACT_APP_API_URL.startsWith('http')
+        ? process.env.REACT_APP_API_URL
+        : 'https://localhost:7083';
 
-      return { success: !!respToken || !!userData, user: userData, token: respToken };
+      const response = await axios.post(`${baseUrl}/api/auth/register`, payload);
+
+      // For OTP flow, we don't expect a token immediately.
+      // If the request succeeds (2xx), we consider it a success.
+      return {
+        success: response.status === 200 || response.status === 201,
+        data: response.data
+      };
     } catch (error) {
       console.error('Registration error:', error);
+      // Construct a useful error message from likely backend shapes
+      const msg = error.response?.data?.message
+        || (typeof error.response?.data === 'string' ? error.response?.data : '')
+        || error.message
+        || 'Registration failed';
+
       return {
         success: false,
-        error: error.response?.data?.message || 'Registration failed'
+        error: msg
       };
     }
   };
@@ -147,6 +157,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     register,
+    verifyOtp: api.verifyOtp, // Direct mapping since api.js handles it well
     logout,
     setUser
   };

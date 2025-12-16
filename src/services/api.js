@@ -1,4 +1,9 @@
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://localhost:7083';
+const envUrl = process.env.REACT_APP_API_URL;
+const API_BASE_URL = (envUrl && envUrl !== 'undefined' && envUrl.startsWith('http'))
+  ? envUrl
+  : 'https://localhost:7083';
+
+console.log('API Config:', { envUrl, API_BASE_URL }); // Debug log
 
 // Response interceptor for common error handling
 const handleResponse = async (res) => {

@@ -1,0 +1,74 @@
+/* Reuse variables from global index.css */
+
+.otp-container {
+    min-height: 100vh;
+    background-color: var(--bg-body);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.otp-card {
+    background: white;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: 100%;
+    max-width: 400px;
+    padding: 2rem;
+    position: relative;
+    z-index: 10;
+    border: 1px solid var(--border-color);
+    text-align: center;
+}
+
+.otp-icon {
+    font-size: 3rem;
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.otp-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.otp-subtitle {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    margin-bottom: 2rem;
+}
+
+.otp-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.otp-input {
+    letter-spacing: 0.5rem;
+    font-size: 1.5rem;
+    text-align: center;
+    padding: 0.75rem;
+}
+
+.otp-resend {
+    margin-top: 1.5rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.otp-resend a {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.otp-resend a:hover {
+    text-decoration: underline;
+}

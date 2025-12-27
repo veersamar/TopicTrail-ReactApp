@@ -163,6 +163,17 @@ export const api = {
     }
   },
 
+  getTrendingArticles: async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/article/trending`);
+      const data = await handleResponse(res);
+      return Array.isArray(data.articles) ? data.articles : [];
+    } catch (error) {
+      console.error('Error fetching trending articles:', error);
+      return [];
+    }
+  },
+
   getMyArticles: async (token, userId, pageNumber = 1) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/article/myarticles?userId=${userId}&pageNumber=${pageNumber}`, {
@@ -554,4 +565,35 @@ export const api = {
       return [];
     }
   },
+
+  getTags: async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/tags`);
+      const data = await handleResponse(res);
+      // Response structure: { success: true, tags: [...], ... }
+      return Array.isArray(data.tags) ? data.tags : [];
+    } catch (error) {
+      console.error('Error fetching tags:', error);
+      return [];
+    }
+  },
+
+  getArticlesByTag: async (token, tagName, pageNumber = 1) => {
+    try {
+      // Assuming endpoint /api/articles?tag={tagName} or similar.
+      // Based on ArticlesFeed logic, it might be better to reuse getArticles or searchArticles if they supported tags.
+      // But creating a dedicated call is safer if the backend logic is specific.
+      // Let's try to query /api/articles/search with a tag param or if there's a specific route.
+      // Since I don't see the Swagger, I'll guess standard REST or use the search endpoint with a special prefix if needed.
+      // BUT, let's assume a dedicated endpoint or query param on articles.
+      const res = await fetch(`${API_BASE_URL}/api/articles?tag=${encodeURIComponent(tagName)}&pageNumber=${pageNumber}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await handleResponse(res);
+      return Array.isArray(data.articles) ? data.articles : (Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching articles by tag:', error);
+      return [];
+    }
+  }
 };

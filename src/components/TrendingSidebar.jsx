@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
 
 function TrendingSidebar() {
   const { token } = useAuth();
@@ -9,16 +9,12 @@ function TrendingSidebar() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Mock data for now if API fails or just for visual consistency with SO style
-    // But we will try to fetch if possible.
     const fetchTrending = async () => {
       try {
-        // Use existing endpoint
-        const response = await axios.get(`https://localhost:7083/api/article/trending`);
-        const data = response.data?.data || response.data || [];
-        setTrending(Array.isArray(data) ? data : []);
+        const data = await api.getTrendingArticles();
+        setTrending(data);
       } catch (e) {
-        console.log("Failed to fetch trending, using empty", e);
+        console.log("Failed to fetch trending", e);
       } finally {
         setLoading(false);
       }

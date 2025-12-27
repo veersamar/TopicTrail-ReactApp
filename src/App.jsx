@@ -10,6 +10,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
+import TagsPage from './pages/TagsPage';
 
 // Components
 // Components
@@ -87,7 +88,8 @@ function AppContent() {
         <Route path="/articles/:id" element={<ArticleDetail />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/my-articles" element={<ArticlesFeed />} />
-        <Route path="/tags" element={<div className="p-4">Tags (Coming Soon)</div>} />
+        <Route path="/my-articles" element={<ArticlesFeed />} />
+        <Route path="/tags" element={<TagsPage />} />
         <Route path="/users" element={<div className="p-4">Users (Coming Soon)</div>} />
         <Route path="/settings" element={
           <div className="container-lg my-5">

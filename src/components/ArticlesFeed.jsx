@@ -9,6 +9,7 @@ function ArticlesFeed() {
   const location = useLocation();
   const query = new URLSearchParams(location.search);
   const typeFilter = query.get('type'); // post, question, poll
+  const tagFilter = query.get('tag'); // NEW: tag filter
   const isMyArticles = location.pathname === '/my-articles';
 
   // Try to get context, fallback to empty if not provided
@@ -42,6 +43,9 @@ function ArticlesFeed() {
             console.log('User ID missing for My Articles');
             articlesPromise = Promise.resolve([]);
           }
+        } else if (tagFilter) {
+          console.log('Fetching articles for tag:', tagFilter);
+          articlesPromise = api.getArticlesByTag(token, tagFilter);
         } else {
           console.log('Fetching ALL articles');
           articlesPromise = token ? api.getArticles(token) : Promise.resolve([]);
@@ -73,7 +77,7 @@ function ArticlesFeed() {
     };
 
     loadData();
-  }, [token, refreshTrigger, isMyArticles, user]);
+  }, [token, refreshTrigger, isMyArticles, user, tagFilter]);
 
   // ========== FILTER & SORT ==========
   const filteredArticles = useMemo(() => {
@@ -108,6 +112,7 @@ function ArticlesFeed() {
 
   const getPageTitle = () => {
     if (isMyArticles) return 'My Articles';
+    if (tagFilter) return `Articles tagged [${tagFilter}]`;
     if (!typeFilter) return 'All Articles';
     const type = articleTypes.find(t => (t.name || t.Name || '').toLowerCase() === typeFilter.toLowerCase());
     return type ? `${type.name || type.Name}s` : 'Articles';

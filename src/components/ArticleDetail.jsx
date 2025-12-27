@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
@@ -7,6 +7,9 @@ function ArticleDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { token, userId } = useAuth();
+
+  // Guard against double-fetch in React StrictMode
+  const hasFetched = useRef(false);
 
   // ========== STATE ==========
   const [pageState, setPageState] = useState({
@@ -32,6 +35,10 @@ function ArticleDetail() {
       }));
       return;
     }
+
+    // Prevent double-fetch in StrictMode (fixes view count incrementing by 2)
+    if (hasFetched.current) return;
+    hasFetched.current = true;
 
     fetchArticle();
   }, [id, token]);
@@ -62,7 +69,7 @@ function ArticleDetail() {
         ...prev,
         article,
         comments: commentsList,
-        likeCount: article.likeCount || article.LikeCount || 0,
+        likeCount: article.likeCount || article.LikeCount || article.article?.likeCount || article.article?.LikeCount || 0,
         loading: false,
       }));
     } catch (error) {
@@ -107,67 +114,69 @@ function ArticleDetail() {
     });
   }, [id, token, userId]); // ✅ FIX: Removed 'article' and 'pageState.liked'
 
+  // Guard against double comment submission in StrictMode
+  const isSubmittingComment = useRef(false);
+
   // ========== HANDLE ADD COMMENT ==========
   const handleAddComment = useCallback(async (e) => {
     e.preventDefault();
 
-    setPageState(prev => {
-      if (!prev.newComment.trim()) {
-        return { ...prev, error: 'Comment cannot be empty' };
+    // Prevent double submission
+    if (isSubmittingComment.current) return;
+
+    const commentText = pageState.newComment.trim();
+
+    if (!commentText) {
+      setPageState(prev => ({ ...prev, error: 'Comment cannot be empty' }));
+      return;
+    }
+
+    if (!userId) {
+      setPageState(prev => ({ ...prev, error: 'Please log in to comment' }));
+      return;
+    }
+
+    isSubmittingComment.current = true;
+    setPageState(prev => ({ ...prev, submittingComment: true, error: null }));
+
+    try {
+      const result = await api.createComment(token, id, commentText, userId);
+      console.log('Comment creation result:', result);
+
+      if (result.success) {
+        const commentObj = {
+          id: result.id || Math.random(),
+          content: commentText,
+          creator: { name: result.creatorName || 'You', id: userId },
+          createdDate: new Date().toISOString(),
+          likeCount: 0,
+        };
+
+        setPageState(prev => ({
+          ...prev,
+          comments: [commentObj, ...prev.comments],
+          newComment: '',
+          submittingComment: false,
+          error: null,
+        }));
+      } else {
+        setPageState(prev => ({
+          ...prev,
+          error: result.error || 'Failed to add comment',
+          submittingComment: false,
+        }));
       }
-
-      if (!userId) {
-        return { ...prev, error: 'Please log in to comment' };
-      }
-
-      // Trigger async operation
-      (async () => {
-        try {
-          const result = await api.createComment(
-            token,
-            id,
-            prev.newComment.trim(),
-            userId
-          );
-
-          console.log('Comment creation result:', result);
-
-          if (result.success) {
-            const commentObj = {
-              id: result.id || Math.random(),
-              content: prev.newComment,
-              creator: { name: result.creatorName || 'You', id: userId },
-              createdDate: new Date().toISOString(),
-              likeCount: 0,
-            };
-
-            setPageState(p => ({
-              ...p,
-              comments: [commentObj, ...p.comments],
-              newComment: '',
-              submittingComment: false,
-              error: null,
-            }));
-          } else {
-            setPageState(p => ({
-              ...p,
-              error: result.error || 'Failed to add comment',
-              submittingComment: false,
-            }));
-          }
-        } catch (error) {
-          console.error('Error adding comment:', error);
-          setPageState(p => ({
-            ...p,
-            error: error.message || 'Failed to add comment',
-            submittingComment: false,
-          }));
-        }
-      })();
-
-      return { ...prev, submittingComment: true, error: null };
-    });
-  }, [token, id, userId]); // ✅ FIX: Removed pageState.newComment from dependencies
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      setPageState(prev => ({
+        ...prev,
+        error: error.message || 'Failed to add comment',
+        submittingComment: false,
+      }));
+    } finally {
+      isSubmittingComment.current = false;
+    }
+  }, [token, id, userId, pageState.newComment]);
 
   // ========== HANDLE DELETE COMMENT ==========
   const handleDeleteComment = useCallback(async (commentId) => {
@@ -223,7 +232,7 @@ function ArticleDetail() {
     }
   };
 
-  const getViewCount = () => pageState.article?.viewCount || pageState.article?.ViewCount || 0;
+  const getViewCount = () => pageState.article?.viewCount || pageState.article?.ViewCount || pageState.article?.article?.viewCount || pageState.article?.article?.ViewCount || 0;
 
   const getArticleType = () => pageState.article?.articleType || '';
   const getIntentType = () => pageState.article?.intentType || '';

@@ -527,4 +527,17 @@ export const api = {
     cache.masterData = null;
     cache.lastFetch = {};
   },
+
+  // ==================== TAG ENDPOINTS ====================
+  suggestTags: async (query) => {
+    try {
+      if (!query || query.length < 2) return [];
+      const res = await fetch(`${API_BASE_URL}/api/tags/suggest?q=${encodeURIComponent(query)}`);
+      const data = await handleResponse(res);
+      return Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching tag suggestions:', error);
+      return [];
+    }
+  },
 };

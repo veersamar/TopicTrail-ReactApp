@@ -1,21 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 function CreateArticleModal({ show, onClose, onSuccess }) {
-  // ========== AUTH & STATE ==========
   const { token, userId } = useAuth();
-
-  // Wizard Steps: 1: Basics, 2: Content, 3: Classification
-  const [currentStep, setCurrentStep] = useState(1);
-  const totalSteps = 3;
+  const tagInputRef = useRef(null);
 
   const [formState, setFormState] = useState({
-    loading: false,          // Submitting
-    dataLoading: true,       // Fetching master data
+    loading: false,
+    dataLoading: true,
     errors: {},
     successMessage: '',
-    // Master data
     articleTypes: [],
     categories: [],
     subCategories: [],
@@ -31,15 +26,19 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
     subCategoryId: '',
     articleType: '',
     intentType: '',
-    audienceType: '',
-    visibility: 'Public', // Default
-    tags: '',
+    audienceTypes: [],
+    visibility: 'Public',
+    tags: [],
   });
 
-  // ========== RESET ON OPEN ==========
+  // Tag input state
+  const [tagInput, setTagInput] = useState('');
+  const [tagSuggestions, setTagSuggestions] = useState([]);
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+
+  // Reset form when modal opens
   useEffect(() => {
     if (show) {
-      setCurrentStep(1);
       setFormData({
         title: '',
         description: '',
@@ -48,18 +47,18 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
         subCategoryId: '',
         articleType: '',
         intentType: '',
-        audienceType: '',
+        audienceTypes: [],
         visibility: 'Public',
-        tags: '',
+        tags: [],
       });
+      setTagInput('');
+      setTagSuggestions([]);
       setFormState(prev => ({ ...prev, errors: {}, successMessage: '', loading: false }));
-
-      // Fetch data if needed (cache handled in api service)
       fetchMasterData();
     }
   }, [show]);
 
-  // ========== FETCH MASTER DATA ==========
+  // Fetch master data and set default ArticleType to "Post"
   const fetchMasterData = async () => {
     try {
       setFormState(prev => ({ ...prev, dataLoading: true }));
@@ -71,6 +70,12 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
         api.getMasterDataByType('AudienceType'),
       ]);
 
+      // Find "Post" type and set as default
+      const postType = types.find(t =>
+        (t.name || t.Name || '').toLowerCase() === 'post'
+      );
+      const defaultArticleType = postType ? (postType.id || postType.Id || postType.value || postType.Value) : '';
+
       setFormState(prev => ({
         ...prev,
         categories: Array.isArray(cats) ? cats : [],
@@ -79,117 +84,146 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
         audienceTypes: audiences,
         dataLoading: false,
       }));
+
+      // Set default ArticleType to Post
+      if (defaultArticleType) {
+        setFormData(prev => ({ ...prev, articleType: defaultArticleType }));
+      }
     } catch (error) {
       console.error('Error loading form data:', error);
       setFormState(prev => ({ ...prev, dataLoading: false }));
     }
   };
 
-  // ========== HANDLE SUB-CATEGORIES ==========
+  // Fetch subcategories when category changes
   useEffect(() => {
     const fetchSubCats = async () => {
       if (!formData.categoryId) {
         setFormState(prev => ({ ...prev, subCategories: [] }));
         return;
       }
-
       try {
-        // Find selected category object (optional: to avoid api call if data is embedded)
-        // But api.getSubCategories is standard:
         const subCats = await api.getSubCategories(formData.categoryId);
         setFormState(prev => ({ ...prev, subCategories: subCats }));
       } catch (error) {
         console.error('Error fetching subcategories:', error);
       }
     };
-
     fetchSubCats();
   }, [formData.categoryId]);
 
-  // ========== HANDLERS ==========
+  // Fetch tag suggestions with debounce
+  useEffect(() => {
+    const fetchTags = async () => {
+      if (tagInput.length >= 2) {
+        try {
+          const suggestions = await api.suggestTags(tagInput);
+          setTagSuggestions(suggestions);
+          setShowTagSuggestions(true);
+        } catch (error) {
+          console.error('Error fetching tag suggestions:', error);
+        }
+      } else {
+        setTagSuggestions([]);
+        setShowTagSuggestions(false);
+      }
+    };
+
+    const debounceTimer = setTimeout(fetchTags, 300);
+    return () => clearTimeout(debounceTimer);
+  }, [tagInput]);
+
+  // Handle input changes
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-
-    // Clear error for this field
+    setFormData(prev => ({ ...prev, [name]: value }));
     if (formState.errors[name]) {
-      setFormState(prev => ({
-        ...prev,
-        errors: { ...prev.errors, [name]: null }
-      }));
+      setFormState(prev => ({ ...prev, errors: { ...prev.errors, [name]: null } }));
     }
   };
 
-  // ========== VALIDATION per STEP ==========
-  const validateStep = (step) => {
+  // Tag handlers
+  const addTag = useCallback((tag) => {
+    const trimmedTag = tag.trim().toLowerCase();
+    if (trimmedTag && !formData.tags.includes(trimmedTag)) {
+      setFormData(prev => ({ ...prev, tags: [...prev.tags, trimmedTag] }));
+    }
+    setTagInput('');
+    setShowTagSuggestions(false);
+    tagInputRef.current?.focus();
+  }, [formData.tags]);
+
+  const removeTag = (tagToRemove) => {
+    setFormData(prev => ({
+      ...prev,
+      tags: prev.tags.filter(tag => tag !== tagToRemove)
+    }));
+  };
+
+  const handleTagKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (tagInput.trim()) {
+        addTag(tagInput);
+      }
+    } else if (e.key === 'Backspace' && !tagInput && formData.tags.length > 0) {
+      removeTag(formData.tags[formData.tags.length - 1]);
+    }
+  };
+
+  // Validation - Title, Content, Category, and ArticleType are required by API
+  const validateForm = () => {
     const newErrors = {};
-    let isValid = true;
 
-    if (step === 1) { // Basics
-      if (!formData.title?.trim()) newErrors.title = 'Title is required';
-      else if (formData.title.length < 5) newErrors.title = 'Title must be at least 5 characters';
-
-      if (!formData.description?.trim()) newErrors.description = 'Description is required';
-
-      if (!formData.articleType) newErrors.articleType = 'Article Type is required';
+    if (!formData.title?.trim()) {
+      newErrors.title = 'Title is required';
+    } else if (formData.title.length < 10) {
+      newErrors.title = 'Title must be at least 10 characters';
     }
 
-    if (step === 2) { // Content
-      if (!formData.content?.trim()) newErrors.content = 'Content is required';
-      else if (formData.content.length < 20) newErrors.content = 'Content is too short';
+    if (!formData.content?.trim()) {
+      newErrors.content = 'Content is required';
+    } else if (formData.content.length < 50) {
+      newErrors.content = 'Content must be at least 50 characters';
     }
 
-    if (step === 3) { // Classification
-      if (!formData.categoryId) newErrors.categoryId = 'Category is required';
-      if (!formData.intentType) newErrors.intentType = 'Intent Type is required';
-      if (!formData.audienceType) newErrors.audienceType = 'Audience Type is required';
+    if (!formData.categoryId) {
+      newErrors.categoryId = 'Category is required';
+    }
+
+    if (!formData.articleType) {
+      newErrors.articleType = 'Article Type is required';
     }
 
     if (Object.keys(newErrors).length > 0) {
       setFormState(prev => ({ ...prev, errors: newErrors }));
-      isValid = false;
+      return false;
     }
-
-    return isValid;
+    return true;
   };
 
-  const handleNext = () => {
-    if (validateStep(currentStep)) {
-      setCurrentStep(prev => Math.min(prev + 1, totalSteps));
-    }
-  };
-
-  const handleBack = () => {
-    setCurrentStep(prev => Math.max(prev - 1, 1));
-  };
-
-
-  // ========== SUBMIT ==========
-  const handleSubmit = async () => {
-    if (!validateStep(3)) return; // Validate final step
+  // Submit handler
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
 
     try {
       setFormState(prev => ({ ...prev, loading: true, errors: {} }));
 
       const articleData = {
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-        content: formData.content.trim(),
-        categoryId: parseInt(formData.categoryId, 10),
-        subCategoryId: formData.subCategoryId ? parseInt(formData.subCategoryId, 10) : 0,
-        articleType: formData.articleType,
-        intentType: formData.intentType,
-        audienceType: formData.audienceType,
-        tags: formData.tags || 'general',
-        status: 'Published',
-        visibility: formData.visibility,
+        Title: formData.title.trim(),
+        Description: formData.description?.trim() || null,
+        Content: formData.content.trim(),
+        CategoryId: parseInt(formData.categoryId, 10),
+        SubCategoryId: formData.subCategoryId ? parseInt(formData.subCategoryId, 10) : null,
+        ArticleType: parseInt(formData.articleType, 10),
+        IntentType: formData.intentType ? parseInt(formData.intentType, 10) : null,
+        AudienceTypes: formData.audienceTypes.length > 0 ? formData.audienceTypes.map(id => parseInt(id, 10)) : null,
+        Tags: formData.tags.length > 0 ? formData.tags : ['general'],
+        Visibility: formData.visibility,
       };
 
       console.log('Submitting article data:', articleData);
-
       const result = await api.createArticle(token, userId, articleData);
 
       if (result.success) {
@@ -198,14 +232,8 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
           loading: false,
           successMessage: 'Article created successfully!',
         }));
-
-        // Notify parent
         if (onSuccess) onSuccess();
-
-        // Close after brief delay
-        setTimeout(() => {
-          onClose();
-        }, 1500);
+        setTimeout(() => onClose(), 1500);
       } else {
         setFormState(prev => ({
           ...prev,
@@ -213,7 +241,6 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
           errors: { submit: result.error || 'Failed to create article' }
         }));
       }
-
     } catch (error) {
       console.error('Submission error:', error);
       setFormState(prev => ({
@@ -224,7 +251,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
     }
   };
 
-  // ========== RENDER SELECT OPTIONS ==========
+  // Render select options helper
   const renderSelectOptions = (items) => {
     if (!Array.isArray(items)) return null;
     return items.map((item, idx) => {
@@ -243,285 +270,856 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
   const { loading, dataLoading, errors, successMessage, articleTypes, categories, subCategories, intentTypes, audienceTypes } = formState;
 
   return (
-    <div className="modal show d-block" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 1050 }}>
-      <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-        <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '12px', overflow: 'hidden' }}>
-
-          {/* Header */}
-          <div className="modal-header bg-white border-bottom-0 pb-0">
+    <div className="create-article-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="create-article-container">
+        {/* Header */}
+        <div className="create-article-header">
+          <div className="header-content">
+            <div className="header-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+            </div>
             <div>
-              <h5 className="modal-title fw-bold text-primary">
-                {currentStep === 1 && 'Step 1: The Basics'}
-                {currentStep === 2 && 'Step 2: Content Creation'}
-                {currentStep === 3 && 'Step 3: Classification'}
-              </h5>
-              <p className="text-muted small mb-0">Create a new article for the community</p>
-            </div>
-            <button type="button" className="btn-close" onClick={onClose} disabled={loading}></button>
-          </div>
-
-          {/* Progress Bar */}
-          <div className="px-3 pt-3">
-            <div className="progress" style={{ height: '6px', borderRadius: '4px' }}>
-              <div
-                className="progress-bar bg-gradient-primary"
-                role="progressbar"
-                style={{ width: `${(currentStep / totalSteps) * 100}%`, transition: 'width 0.3s ease' }}
-              ></div>
+              <h2 className="header-title">Create New Article</h2>
+              <p className="header-subtitle">Share your thoughts with the community</p>
             </div>
           </div>
+          <button className="close-btn" onClick={onClose} disabled={loading}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
 
-          {/* Body */}
-          <div className="modal-body p-4">
+        {/* Body */}
+        <div className="create-article-body">
+          {successMessage && (
+            <div className="alert alert-success">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+              {successMessage}
+            </div>
+          )}
 
-            {successMessage && (
-              <div className="alert alert-success border-0 shadow-sm mb-3">
-                <i className="bi bi-check-circle-fill me-2"></i> {successMessage}
+          {errors.submit && (
+            <div className="alert alert-error">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="15" y1="9" x2="9" y2="15"></line>
+                <line x1="9" y1="9" x2="15" y2="15"></line>
+              </svg>
+              {errors.submit}
+            </div>
+          )}
+
+          {dataLoading ? (
+            <div className="loading-state">
+              <div className="spinner"></div>
+              <p>Loading options...</p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              {/* Title */}
+              <div className="form-group">
+                <label className="form-label">
+                  Title <span className="required">*</span>
+                </label>
+                <input
+                  type="text"
+                  className={`form-input ${errors.title ? 'error' : ''}`}
+                  name="title"
+                  value={formData.title}
+                  onChange={handleInputChange}
+                  placeholder="Enter an engaging title for your article..."
+                  autoFocus
+                />
+                {errors.title && <span className="error-text">{errors.title}</span>}
               </div>
-            )}
 
-            {errors.submit && (
-              <div className="alert alert-danger border-0 shadow-sm mb-3">
-                <i className="bi bi-exclamation-triangle-fill me-2"></i> {errors.submit}
+              {/* Description - Optional */}
+              <div className="form-group">
+                <label className="form-label">
+                  Description <span className="optional">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  placeholder="A brief summary of your article..."
+                  maxLength="1000"
+                />
+                <span className="char-count">{formData.description.length}/1000</span>
               </div>
-            )}
 
-            {dataLoading ? (
-              <div className="text-center py-5">
-                <div className="spinner-border text-primary" role="status"></div>
-                <p className="mt-2 text-muted">Loading options...</p>
+              {/* Content */}
+              <div className="form-group">
+                <label className="form-label">
+                  Content <span className="required">*</span>
+                </label>
+                <div className="textarea-wrapper">
+                  <textarea
+                    className={`form-textarea ${errors.content ? 'error' : ''}`}
+                    name="content"
+                    value={formData.content}
+                    onChange={handleInputChange}
+                    rows="10"
+                    placeholder="Write your article content here... (Minimum 50 characters)"
+                  ></textarea>
+                  <span className="markdown-badge">Markdown Supported</span>
+                </div>
+                {errors.content && <span className="error-text">{errors.content}</span>}
+                <span className="char-count">{formData.content.length} characters</span>
               </div>
+
+              {/* Two column layout for selects */}
+              <div className="form-row">
+                {/* Category - Required */}
+                <div className="form-group half">
+                  <label className="form-label">
+                    Category <span className="required">*</span>
+                  </label>
+                  <select
+                    className={`form-select ${errors.categoryId ? 'error' : ''}`}
+                    name="categoryId"
+                    value={formData.categoryId}
+                    onChange={handleInputChange}
+                  >
+                    <option value="">Select Category...</option>
+                    {renderSelectOptions(categories)}
+                  </select>
+                  {errors.categoryId && <span className="error-text">{errors.categoryId}</span>}
+                </div>
+
+                {/* Sub Category - Optional */}
+                <div className="form-group half">
+                  <label className="form-label">
+                    Sub-Category <span className="optional">(Optional)</span>
+                  </label>
+                  <select
+                    className="form-select"
+                    name="subCategoryId"
+                    value={formData.subCategoryId}
+                    onChange={handleInputChange}
+                    disabled={!formData.categoryId || subCategories.length === 0}
+                  >
+                    <option value="">Select Sub-Category...</option>
+                    {renderSelectOptions(subCategories)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-row">
+                {/* Article Type - Required, defaults to Post */}
+                <div className="form-group half">
+                  <label className="form-label">
+                    Article Type <span className="required">*</span>
+                  </label>
+                  <select
+                    className={`form-select ${errors.articleType ? 'error' : ''}`}
+                    name="articleType"
+                    value={formData.articleType}
+                    onChange={handleInputChange}
+                  >
+                    <option value="">Select Type...</option>
+                    {renderSelectOptions(articleTypes)}
+                  </select>
+                  {errors.articleType && <span className="error-text">{errors.articleType}</span>}
+                </div>
+
+                {/* Intent Type - Optional */}
+                <div className="form-group half">
+                  <label className="form-label">
+                    Intent <span className="optional">(Optional)</span>
+                  </label>
+                  <select
+                    className="form-select"
+                    name="intentType"
+                    value={formData.intentType}
+                    onChange={handleInputChange}
+                  >
+                    <option value="">Select Intent...</option>
+                    {renderSelectOptions(intentTypes)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-row">
+                {/* Audience Types - Optional, Multi-select */}
+                <div className="form-group half">
+                  <label className="form-label">
+                    Target Audience <span className="optional">(Optional, Multi-select)</span>
+                  </label>
+                  <div className="multi-select-container">
+                    {audienceTypes.map((audience, idx) => {
+                      const val = String(audience.id || audience.Id || audience.value || audience.Value);
+                      const label = audience.name || audience.Name || audience.value || audience.Value;
+                      const isSelected = formData.audienceTypes.includes(val);
+                      return (
+                        <label
+                          key={val || idx}
+                          className={`multi-select-item ${isSelected ? 'selected' : ''}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  audienceTypes: [...prev.audienceTypes, val]
+                                }));
+                              } else {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  audienceTypes: prev.audienceTypes.filter(id => id !== val)
+                                }));
+                              }
+                            }}
+                          />
+                          {label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Visibility */}
+                <div className="form-group half">
+                  <label className="form-label">Visibility</label>
+                  <select
+                    className="form-select"
+                    name="visibility"
+                    value={formData.visibility}
+                    onChange={handleInputChange}
+                  >
+                    <option value="Public">Public (Everyone can see)</option>
+                    <option value="Private">Private (Only you)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Tags - Multi-select with free text */}
+              <div className="form-group">
+                <label className="form-label">
+                  Tags <span className="optional">(Press Enter to add)</span>
+                </label>
+                <div className="tags-container">
+                  <div className="tags-input-wrapper">
+                    {formData.tags.map((tag, index) => (
+                      <span key={index} className="tag-pill">
+                        {tag}
+                        <button
+                          type="button"
+                          className="tag-remove"
+                          onClick={() => removeTag(tag)}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    <input
+                      ref={tagInputRef}
+                      type="text"
+                      className="tag-input"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={handleTagKeyDown}
+                      onBlur={() => setTimeout(() => setShowTagSuggestions(false), 200)}
+                      placeholder={formData.tags.length === 0 ? "Type and press Enter to add tags..." : ""}
+                    />
+                  </div>
+                  {showTagSuggestions && tagSuggestions.length > 0 && (
+                    <div className="tag-suggestions">
+                      {tagSuggestions.map((suggestion, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="suggestion-item"
+                          onClick={() => addTag(typeof suggestion === 'string' ? suggestion : suggestion.name || suggestion.Name)}
+                        >
+                          {typeof suggestion === 'string' ? suggestion : suggestion.name || suggestion.Name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </form>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="create-article-footer">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onClose}
+            disabled={loading}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            onClick={handleSubmit}
+            disabled={loading || dataLoading}
+          >
+            {loading ? (
+              <>
+                <span className="btn-spinner"></span>
+                Publishing...
+              </>
             ) : (
-              <form>
-                {/* STEP 1: BASICS */}
-                {currentStep === 1 && (
-                  <div className="animate-fade-in">
-                    {/* Title */}
-                    <div className="mb-3">
-                      <label className="form-label fw-600">Title <span className="text-danger">*</span></label>
-                      <input
-                        type="text"
-                        className={`form-control ${errors.title ? 'is-invalid' : ''}`}
-                        name="title"
-                        value={formData.title}
-                        onChange={handleInputChange}
-                        placeholder="e.g., How to Master React Hooks"
-                        autoFocus
-                      />
-                      {errors.title && <div className="invalid-feedback">{errors.title}</div>}
-                    </div>
-
-                    {/* Description */}
-                    <div className="mb-3">
-                      <label className="form-label fw-600">Short Description <span className="text-danger">*</span></label>
-                      <input
-                        type="text"
-                        className={`form-control ${errors.description ? 'is-invalid' : ''}`}
-                        name="description"
-                        value={formData.description}
-                        onChange={handleInputChange}
-                        placeholder="A brief summary (max 300 chars)"
-                        maxLength="300"
-                      />
-                      {errors.description && <div className="invalid-feedback">{errors.description}</div>}
-                    </div>
-
-                    {/* Article Type */}
-                    <div className="mb-3">
-                      <label className="form-label fw-600">Article Type <span className="text-danger">*</span></label>
-                      <select
-                        className={`form-select ${errors.articleType ? 'is-invalid' : ''}`}
-                        name="articleType"
-                        value={formData.articleType}
-                        onChange={handleInputChange}
-                      >
-                        <option value="">Select Type...</option>
-                        {renderSelectOptions(articleTypes)}
-                      </select>
-                      {errors.articleType && <div className="invalid-feedback">{errors.articleType}</div>}
-                    </div>
-                  </div>
-                )}
-
-                {/* STEP 2: CONTENT */}
-                {currentStep === 2 && (
-                  <div className="animate-fade-in">
-                    <div className="mb-3">
-                      <label className="form-label fw-600">Content <span className="text-danger">*</span></label>
-                      <div className="position-relative">
-                        <textarea
-                          className={`form-control ${errors.content ? 'is-invalid' : ''}`}
-                          name="content"
-                          value={formData.content}
-                          onChange={handleInputChange}
-                          rows="12"
-                          placeholder="Write your article here..."
-                          style={{ resize: 'vertical', minHeight: '300px' }}
-                        ></textarea>
-                        {/* Simple toolbar placeholder */}
-                        <div className="position-absolute top-0 end-0 p-2 text-muted small opacity-50">
-                          Markdown Supported
-                        </div>
-                      </div>
-                      {errors.content && <div className="invalid-feedback d-block">{errors.content}</div>}
-                      <div className="text-muted small mt-1 text-end">
-                        {formData.content.length} characters
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* STEP 3: CLASSIFICATION */}
-                {currentStep === 3 && (
-                  <div className="animate-fade-in">
-                    <div className="row g-3">
-                      {/* Category */}
-                      <div className="col-md-6">
-                        <label className="form-label fw-600">Category <span className="text-danger">*</span></label>
-                        <select
-                          className={`form-select ${errors.categoryId ? 'is-invalid' : ''}`}
-                          name="categoryId"
-                          value={formData.categoryId}
-                          onChange={handleInputChange}
-                        >
-                          <option value="">Select Category...</option>
-                          {renderSelectOptions(categories)}
-                        </select>
-                        {errors.categoryId && <div className="invalid-feedback">{errors.categoryId}</div>}
-                      </div>
-
-                      {/* Sub Category */}
-                      <div className="col-md-6">
-                        <label className="form-label fw-600">Sub-Category <span className="text-muted">(Optional)</span></label>
-                        <select
-                          className="form-select"
-                          name="subCategoryId"
-                          value={formData.subCategoryId}
-                          onChange={handleInputChange}
-                          disabled={!formData.categoryId || subCategories.length === 0}
-                        >
-                          <option value="">Select Sub-Category...</option>
-                          {renderSelectOptions(subCategories)}
-                        </select>
-                      </div>
-
-                      {/* Intent Type */}
-                      <div className="col-md-6">
-                        <label className="form-label fw-600">Intent <span className="text-danger">*</span></label>
-                        <select
-                          className={`form-select ${errors.intentType ? 'is-invalid' : ''}`}
-                          name="intentType"
-                          value={formData.intentType}
-                          onChange={handleInputChange}
-                        >
-                          <option value="">Select Intent...</option>
-                          {renderSelectOptions(intentTypes)}
-                        </select>
-                        {errors.intentType && <div className="invalid-feedback">{errors.intentType}</div>}
-                      </div>
-
-                      {/* Audience Type */}
-                      <div className="col-md-6">
-                        <label className="form-label fw-600">Target Audience <span className="text-danger">*</span></label>
-                        <select
-                          className={`form-select ${errors.audienceType ? 'is-invalid' : ''}`}
-                          name="audienceType"
-                          value={formData.audienceType}
-                          onChange={handleInputChange}
-                        >
-                          <option value="">Select Audience...</option>
-                          {renderSelectOptions(audienceTypes)}
-                        </select>
-                        {errors.audienceType && <div className="invalid-feedback">{errors.audienceType}</div>}
-                      </div>
-
-                      {/* Visibility */}
-                      <div className="col-md-6">
-                        <label className="form-label fw-600">Visibility</label>
-                        <select
-                          className="form-select"
-                          name="visibility"
-                          value={formData.visibility}
-                          onChange={handleInputChange}
-                        >
-                          <option value="Public">Public (Everyone can see)</option>
-                          <option value="Private">Private (Only you)</option>
-                        </select>
-                      </div>
-
-                      {/* Tags */}
-                      <div className="col-md-6">
-                        <label className="form-label fw-600">Tags</label>
-                        <input
-                          type="text"
-                          className="form-control"
-                          name="tags"
-                          value={formData.tags}
-                          onChange={handleInputChange}
-                          placeholder="e.g. react, tutorial"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-              </form>
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+                Publish Article
+              </>
             )}
-          </div>
-
-          {/* Footer - Navigation Buttons */}
-          <div className="modal-footer border-top-0 pt-0">
-            {currentStep > 1 && (
-              <button
-                type="button"
-                className="btn btn-outline-secondary px-4 rounded-pill"
-                onClick={handleBack}
-                disabled={loading}
-              >
-                Back
-              </button>
-            )}
-
-            {currentStep < 3 ? (
-              <button
-                type="button"
-                className="btn btn-primary px-4 rounded-pill"
-                onClick={handleNext}
-                disabled={loading || dataLoading}
-              >
-                Next Step <i className="bi bi-arrow-right ms-2"></i>
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-success px-5 rounded-pill shadow-sm"
-                onClick={handleSubmit}
-                disabled={loading || dataLoading}
-                style={{ fontWeight: 600 }}
-              >
-                {loading ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                    Publishing...
-                  </>
-                ) : (
-                  'Publish Article'
-                )}
-              </button>
-            )}
-          </div>
+          </button>
         </div>
       </div>
+
       <style>{`
-        .bg-gradient-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        .create-article-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.6);
+          backdrop-filter: blur(8px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1050;
+          padding: 20px;
+          animation: fadeIn 0.3s ease;
         }
-        .animate-fade-in {
-            animation: fadeIn 0.3s ease-in-out;
-        }
+
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        .create-article-container {
+          background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
+          border-radius: 20px;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+          max-width: 800px;
+          width: 100%;
+          max-height: 90vh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideUp {
+          from { 
+            opacity: 0; 
+            transform: translateY(30px) scale(0.95); 
+          }
+          to { 
+            opacity: 1; 
+            transform: translateY(0) scale(1); 
+          }
+        }
+
+        /* Header */
+        .create-article-header {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          padding: 24px 28px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .header-content {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .header-icon {
+          width: 48px;
+          height: 48px;
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+        }
+
+        .header-title {
+          margin: 0;
+          font-size: 1.5rem;
+          font-weight: 700;
+          color: white;
+          letter-spacing: -0.02em;
+        }
+
+        .header-subtitle {
+          margin: 4px 0 0 0;
+          font-size: 0.875rem;
+          color: rgba(255, 255, 255, 0.8);
+        }
+
+        .close-btn {
+          background: rgba(255, 255, 255, 0.15);
+          border: none;
+          border-radius: 10px;
+          width: 40px;
+          height: 40px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .close-btn:hover {
+          background: rgba(255, 255, 255, 0.25);
+          transform: scale(1.05);
+        }
+
+        /* Body */
+        .create-article-body {
+          flex: 1;
+          overflow-y: auto;
+          padding: 28px;
+        }
+
+        /* Alerts */
+        .alert {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 16px 20px;
+          border-radius: 12px;
+          margin-bottom: 24px;
+          font-weight: 500;
+          animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        .alert-success {
+          background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+          color: #155724;
+          border: 1px solid #b1dfbb;
+        }
+
+        .alert-error {
+          background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+          color: #721c24;
+          border: 1px solid #f5c6cb;
+        }
+
+        /* Loading */
+        .loading-state {
+          text-align: center;
+          padding: 60px 20px;
+        }
+
+        .spinner {
+          width: 48px;
+          height: 48px;
+          border: 4px solid #e9ecef;
+          border-top-color: #667eea;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+          margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+
+        .loading-state p {
+          color: #6c757d;
+          font-size: 1rem;
+        }
+
+        /* Form Styles */
+        .form-group {
+          margin-bottom: 24px;
+          position: relative;
+        }
+
+        .form-row {
+          display: flex;
+          gap: 20px;
+          margin-bottom: 0;
+        }
+
+        .form-group.half {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .form-label {
+          display: block;
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: #344054;
+          margin-bottom: 8px;
+        }
+
+        .required {
+          color: #dc3545;
+        }
+
+        .optional {
+          color: #6c757d;
+          font-weight: 400;
+          font-size: 0.8rem;
+        }
+
+        .form-input,
+        .form-select,
+        .form-textarea {
+          width: 100%;
+          padding: 14px 18px;
+          font-size: 1rem;
+          border: 2px solid #e9ecef;
+          border-radius: 12px;
+          background: #fff;
+          color: #344054;
+          transition: all 0.2s ease;
+          box-sizing: border-box;
+        }
+
+        .form-input:focus,
+        .form-select:focus,
+        .form-textarea:focus {
+          outline: none;
+          border-color: #667eea;
+          box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-input.error,
+        .form-select.error,
+        .form-textarea.error {
+          border-color: #dc3545;
+        }
+
+        .form-input.error:focus,
+        .form-select.error:focus,
+        .form-textarea.error:focus {
+          box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.1);
+        }
+
+        .form-textarea {
+          resize: vertical;
+          min-height: 200px;
+          font-family: inherit;
+        }
+
+        .textarea-wrapper {
+          position: relative;
+        }
+
+        .markdown-badge {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          background: rgba(102, 126, 234, 0.1);
+          color: #667eea;
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-size: 0.75rem;
+          font-weight: 500;
+        }
+
+        .char-count {
+          display: block;
+          text-align: right;
+          font-size: 0.8rem;
+          color: #6c757d;
+          margin-top: 6px;
+        }
+
+        .error-text {
+          display: block;
+          color: #dc3545;
+          font-size: 0.85rem;
+          margin-top: 6px;
+          animation: shake 0.3s ease;
+        }
+
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-4px); }
+          75% { transform: translateX(4px); }
+        }
+
+        .form-select {
+          cursor: pointer;
+          appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%236c757d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 12px center;
+          background-size: 18px;
+          padding-right: 42px;
+        }
+
+        .form-select:disabled {
+          background-color: #f8f9fa;
+          cursor: not-allowed;
+          opacity: 0.7;
+        }
+
+        /* Multi-select (AudienceTypes) */
+        .multi-select-container {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          padding: 12px;
+          border: 2px solid #e9ecef;
+          border-radius: 12px;
+          background: #fff;
+          min-height: 50px;
+        }
+
+        .multi-select-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 14px;
+          border-radius: 20px;
+          font-size: 0.875rem;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          background: #f8f9fa;
+          border: 1px solid #e9ecef;
+          color: #495057;
+        }
+
+        .multi-select-item:hover {
+          background: #e9ecef;
+        }
+
+        .multi-select-item.selected {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          border-color: transparent;
+        }
+
+        .multi-select-item input[type="checkbox"] {
+          display: none;
+        }
+
+        /* Tags */
+        .tags-container {
+          position: relative;
+        }
+
+        .tags-input-wrapper {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          padding: 12px 16px;
+          border: 2px solid #e9ecef;
+          border-radius: 12px;
+          background: #fff;
+          min-height: 52px;
+          align-items: center;
+          transition: all 0.2s ease;
+        }
+
+        .tags-input-wrapper:focus-within {
+          border-color: #667eea;
+          box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+        }
+
+        .tag-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          padding: 6px 12px;
+          border-radius: 20px;
+          font-size: 0.875rem;
+          font-weight: 500;
+          animation: popIn 0.2s ease;
+        }
+
+        @keyframes popIn {
+          from { opacity: 0; transform: scale(0.8); }
+          to { opacity: 1; transform: scale(1); }
+        }
+
+        .tag-remove {
+          background: rgba(255, 255, 255, 0.3);
+          border: none;
+          border-radius: 50%;
+          width: 18px;
+          height: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          font-size: 14px;
+          line-height: 1;
+          color: white;
+          transition: background 0.2s ease;
+        }
+
+        .tag-remove:hover {
+          background: rgba(255, 255, 255, 0.5);
+        }
+
+        .tag-input {
+          flex: 1;
+          min-width: 120px;
+          border: none;
+          outline: none;
+          font-size: 1rem;
+          background: transparent;
+          color: #344054;
+        }
+
+        .tag-input::placeholder {
+          color: #adb5bd;
+        }
+
+        .tag-suggestions {
+          position: absolute;
+          top: 100%;
+          left: 0;
+          right: 0;
+          background: white;
+          border: 2px solid #e9ecef;
+          border-top: none;
+          border-radius: 0 0 12px 12px;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+          z-index: 10;
+          max-height: 200px;
+          overflow-y: auto;
+        }
+
+        .suggestion-item {
+          display: block;
+          width: 100%;
+          padding: 12px 16px;
+          text-align: left;
+          border: none;
+          background: transparent;
+          cursor: pointer;
+          font-size: 0.95rem;
+          color: #344054;
+          transition: background 0.15s ease;
+        }
+
+        .suggestion-item:hover {
+          background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+        }
+
+        /* Footer */
+        .create-article-footer {
+          padding: 20px 28px;
+          background: #f8f9fa;
+          border-top: 1px solid #e9ecef;
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
+        }
+
+        .btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 24px;
+          font-size: 1rem;
+          font-weight: 600;
+          border-radius: 12px;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .btn-secondary {
+          background: #fff;
+          color: #495057;
+          border: 2px solid #dee2e6;
+        }
+
+        .btn-secondary:hover {
+          background: #f8f9fa;
+          border-color: #c1c8ce;
+        }
+
+        .btn-primary {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          box-shadow: 0 4px 15px rgba(102, 126, 234, 0.35);
+        }
+
+        .btn-primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(102, 126, 234, 0.45);
+        }
+
+        .btn-primary:disabled {
+          background: #adb5bd;
+          cursor: not-allowed;
+          transform: none;
+          box-shadow: none;
+        }
+
+        .btn-spinner {
+          width: 18px;
+          height: 18px;
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          border-top-color: white;
+          border-radius: 50%;
+          animation: spin 0.6s linear infinite;
+        }
+
+        /* Responsive */
+        @media (max-width: 640px) {
+          .create-article-container {
+            max-height: 100vh;
+            border-radius: 0;
+          }
+
+          .form-row {
+            flex-direction: column;
+            gap: 0;
+          }
+
+          .create-article-header {
+            padding: 20px;
+          }
+
+          .create-article-body {
+            padding: 20px;
+          }
+
+          .header-title {
+            font-size: 1.25rem;
+          }
+
+          .header-icon {
+            width: 40px;
+            height: 40px;
+          }
         }
       `}</style>
     </div>

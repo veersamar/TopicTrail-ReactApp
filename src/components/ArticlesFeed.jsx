@@ -1,19 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useOutletContext, Link } from 'react-router-dom';
+import { useOutletContext, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import ArticleCard from './ArticleCard';
 
 function ArticlesFeed() {
-  const { token } = useAuth();
+  const { token, user, userId } = useAuth();
+  const location = useLocation();
+  const query = new URLSearchParams(location.search);
+  const typeFilter = query.get('type'); // post, question, poll
+  const isMyArticles = location.pathname === '/my-articles';
 
-  // Try to get context, fallback to empty if not provided
   // Try to get context, fallback to empty if not provided
   const context = useOutletContext();
   const refreshTrigger = context?.refreshTrigger || 0;
 
   // State
   const [articles, setArticles] = useState([]);
+  const [articleTypes, setArticleTypes] = useState([]); // Master data for types
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -26,11 +30,39 @@ function ArticlesFeed() {
       setLoading(true);
       setError(null);
       try {
-        const fetchedArticles = await (token ? api.getArticles(token) : Promise.resolve([]));
+        console.log('ArticlesFeed loading data. Path:', location.pathname, 'isMyArticles:', isMyArticles, 'User:', user, 'UserId:', userId);
+
+        // Determine which API call to make
+        let articlesPromise;
+        if (isMyArticles) {
+          if (userId) {
+            console.log('Fetching MY articles for user:', userId);
+            articlesPromise = api.getMyArticles(token, userId);
+          } else {
+            console.log('User ID missing for My Articles');
+            articlesPromise = Promise.resolve([]);
+          }
+        } else {
+          console.log('Fetching ALL articles');
+          articlesPromise = token ? api.getArticles(token) : Promise.resolve([]);
+        }
+
+        // Fetch articles and types in parallel
+        const [fetchedArticles, fetchedTypes] = await Promise.all([
+          articlesPromise,
+          api.getMasterDataByType('ArticleType')
+        ]);
+
+        console.log('Fetched articles:', fetchedArticles);
+
         if (Array.isArray(fetchedArticles)) {
           setArticles(fetchedArticles);
         } else {
           setArticles([]);
+        }
+
+        if (Array.isArray(fetchedTypes)) {
+          setArticleTypes(fetchedTypes);
         }
       } catch (err) {
         console.error('Error loading feed:', err);
@@ -41,11 +73,25 @@ function ArticlesFeed() {
     };
 
     loadData();
-  }, [token, refreshTrigger]);
+  }, [token, refreshTrigger, isMyArticles, user]);
 
   // ========== FILTER & SORT ==========
   const filteredArticles = useMemo(() => {
     let filtered = [...articles];
+
+    // Filter by Type (URL param)
+    if (typeFilter) {
+      const targetType = articleTypes.find(t =>
+        (t.name || t.Name || '').toLowerCase() === typeFilter.toLowerCase()
+      );
+      if (targetType) {
+        const typeId = targetType.id || targetType.Id || targetType.value || targetType.Value;
+        filtered = filtered.filter(a => {
+          const aType = a.articleType || a.ArticleType;
+          return parseInt(aType, 10) === parseInt(typeId, 10);
+        });
+      }
+    }
 
     // Sort logic
     if (filterMode === 'newest') {
@@ -58,8 +104,14 @@ function ArticlesFeed() {
     }
 
     return filtered;
-  }, [articles, filterMode]);
+  }, [articles, filterMode, typeFilter, articleTypes]);
 
+  const getPageTitle = () => {
+    if (isMyArticles) return 'My Articles';
+    if (!typeFilter) return 'All Articles';
+    const type = articleTypes.find(t => (t.name || t.Name || '').toLowerCase() === typeFilter.toLowerCase());
+    return type ? `${type.name || type.Name}s` : 'Articles';
+  };
 
   if (loading) {
     return (
@@ -77,13 +129,12 @@ function ArticlesFeed() {
     <div className="articles-feed">
       {/* Header Section */}
       <div className="d-flex justify-content-between align-items-center mb-3 border-bottom pb-3">
-        <h3 className="mb-0 fw-normal">All Questions</h3>
-        <button className="btn btn-primary btn-sm" onClick={() => window.location.reload()}>Ask Question</button>
+        <h3 className="mb-0 fw-normal">{getPageTitle()}</h3>
         {/* Note: In real app, Ask Question is in Header (Navbar), this button here is redundant or could open modal too */}
       </div>
 
       <div className="d-flex justify-content-between align-items-center mb-3">
-        <div className="fs-5 text-secondary">{filteredArticles.length} questions</div>
+        <div className="fs-5 text-secondary">{filteredArticles.length} items</div>
 
         <div className="btn-group btn-group-sm outline-group" role="group">
           <button
@@ -112,7 +163,7 @@ function ArticlesFeed() {
           ))
         ) : (
           <div className="py-5 text-center text-muted">
-            No questions found.
+            No articles found for this filter.
           </div>
         )}
       </div>

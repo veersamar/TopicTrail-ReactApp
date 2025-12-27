@@ -7,23 +7,25 @@ import CreateArticleModal from './CreateArticleModal';
 
 function MainLayout() {
     const [showCreateModal, setShowCreateModal] = useState(false);
-    // We can treat refreshTrigger as a context or just let ArticleFeed handle its own fetching.
-    // For now, if we create an article, we might want to refresh the feed. 
-    // But since the Feed is inside Outlet, passing props is tricky without context.
-    // We'll rely on the modal's onSuccess to trigger a re-fetch if we can, or just let the user pull to refresh/nav.
-    // Actually, ArticleFeed is the main consumer. We can use a simple context or event, but for this redesign, 
-    // let's just refresh the whole window or use a context if needed.
-    // Simpler: Just pass a key to Outlet? No, Outlet doesn't take props easily.
-    // We'll leave the refresh logic for a moment and focus on layout.
+    const [selectedArticleType, setSelectedArticleType] = useState('post');
+
+    const handleCreateClick = (type) => {
+        setSelectedArticleType(type || 'post');
+        setShowCreateModal(true);
+    };
+
+    const handleCloseModal = () => {
+        setShowCreateModal(false);
+        setSelectedArticleType('post');
+    };
 
     const handleCreateSuccess = () => {
-        // Ideally trigger refresh. For now we can reload window or use a global context.
         window.location.reload();
     };
 
     return (
         <div className="d-flex flex-column min-vh-100 bg-body">
-            <Navbar onCreateClick={() => setShowCreateModal(true)} />
+            <Navbar onCreateClick={handleCreateClick} />
 
             <div className="container-lg my-0 flex-grow-1">
                 <div className="d-flex justify-content-between pt-4">
@@ -47,8 +49,9 @@ function MainLayout() {
             {/* Create Article Modal */}
             <CreateArticleModal
                 show={showCreateModal}
-                onClose={() => setShowCreateModal(false)}
+                onClose={handleCloseModal}
                 onSuccess={handleCreateSuccess}
+                articleType={selectedArticleType}
             />
         </div>
     );

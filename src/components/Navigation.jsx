@@ -8,13 +8,18 @@ function Navigation({ onCreateClick }) {
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [isCreateDropdownOpen, setIsCreateDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const createDropdownRef = useRef(null);
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsUserDropdownOpen(false);
+      }
+      if (createDropdownRef.current && !createDropdownRef.current.contains(event.target)) {
+        setIsCreateDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -30,15 +35,15 @@ function Navigation({ onCreateClick }) {
     setIsUserDropdownOpen(false);
   };
 
-  const handleCreateClick = () => {
-    onCreateClick();
+  const handleCreateTypeClick = (type) => {
+    onCreateClick(type);
     setIsMenuOpen(false);
+    setIsCreateDropdownOpen(false);
   };
 
   // Robust User Name Display Logic
   const getUserDisplayName = () => {
     if (!user) return 'Guest';
-    // Check all possible properties
     return user.name || user.firstName || user.userName || user.username || user.fullName || user.email?.split('@')[0] || 'User';
   };
 
@@ -54,7 +59,7 @@ function Navigation({ onCreateClick }) {
         {/* Logo */}
         <Link to="/articles" className="navbar-brand">
           <span className="brand-icon">📰</span>
-          <span className="brand-text">ArticleHub</span>
+          <span className="brand-text">TopicTrail</span>
         </Link>
 
         {/* Mobile Toggle */}
@@ -95,10 +100,52 @@ function Navigation({ onCreateClick }) {
             </li>
           </ul>
 
-          {/* CTA Button */}
-          <button className="btn-create-primary" onClick={handleCreateClick}>
-            + Create Article
-          </button>
+          {/* Create Dropdown Button */}
+          <div className="create-dropdown-wrapper" ref={createDropdownRef}>
+            <button
+              className="btn-create-primary"
+              onClick={() => setIsCreateDropdownOpen(!isCreateDropdownOpen)}
+              aria-expanded={isCreateDropdownOpen}
+            >
+              <span className="create-icon">+</span>
+              <span>Create</span>
+              <span className="dropdown-arrow-small">{isCreateDropdownOpen ? '▲' : '▼'}</span>
+            </button>
+
+            {/* Create Type Dropdown Menu */}
+            <div className={`create-dropdown-menu ${isCreateDropdownOpen ? 'show' : ''}`}>
+              <button
+                className="create-dropdown-item"
+                onClick={() => handleCreateTypeClick('post')}
+              >
+                <span className="create-type-icon">📝</span>
+                <div className="create-type-info">
+                  <span className="create-type-name">Post</span>
+                  <span className="create-type-desc">Share an article or blog</span>
+                </div>
+              </button>
+              <button
+                className="create-dropdown-item"
+                onClick={() => handleCreateTypeClick('question')}
+              >
+                <span className="create-type-icon">❓</span>
+                <div className="create-type-info">
+                  <span className="create-type-name">Question</span>
+                  <span className="create-type-desc">Ask the community</span>
+                </div>
+              </button>
+              <button
+                className="create-dropdown-item"
+                onClick={() => handleCreateTypeClick('poll')}
+              >
+                <span className="create-type-icon">📊</span>
+                <div className="create-type-info">
+                  <span className="create-type-name">Poll</span>
+                  <span className="create-type-desc">Create a poll</span>
+                </div>
+              </button>
+            </div>
+          </div>
 
           {/* Auth Buttons or User Menu */}
           {!user ? (

@@ -2,9 +2,18 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-function CreateArticleModal({ show, onClose, onSuccess }) {
+function CreateArticleModal({ show, onClose, onSuccess, articleType: propArticleType = 'post' }) {
   const { token, userId } = useAuth();
   const tagInputRef = useRef(null);
+
+  // Type configuration
+  const typeConfig = {
+    post: { icon: '📝', title: 'Create New Post', subtitle: 'Share an article or blog with the community' },
+    question: { icon: '❓', title: 'Ask a Question', subtitle: 'Get answers from the community' },
+    poll: { icon: '📊', title: 'Create a Poll', subtitle: 'Gather opinions from the community' },
+  };
+
+  const currentTypeConfig = typeConfig[propArticleType] || typeConfig.post;
 
   const [formState, setFormState] = useState({
     loading: false,
@@ -29,6 +38,8 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
     audienceTypes: [],
     visibility: 'Public',
     tags: [],
+    pollOptions: ['', ''], // For poll type
+    attachments: [], // For file attachments
   });
 
   // Tag input state
@@ -36,7 +47,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
   const [tagSuggestions, setTagSuggestions] = useState([]);
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
 
-  // Reset form when modal opens
+  // Reset form when modal opens and set article type from prop
   useEffect(() => {
     if (show) {
       setFormData({
@@ -50,6 +61,8 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
         audienceTypes: [],
         visibility: 'Public',
         tags: [],
+        pollOptions: ['', ''],
+        attachments: [],
       });
       setTagInput('');
       setTagSuggestions([]);
@@ -58,7 +71,8 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
     }
   }, [show]);
 
-  // Fetch master data and set default ArticleType to "Post"
+
+  // Fetch master data and set ArticleType from prop
   const fetchMasterData = async () => {
     try {
       setFormState(prev => ({ ...prev, dataLoading: true }));
@@ -70,11 +84,11 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
         api.getMasterDataByType('AudienceType'),
       ]);
 
-      // Find "Post" type and set as default
-      const postType = types.find(t =>
-        (t.name || t.Name || '').toLowerCase() === 'post'
+      // Find article type based on prop
+      const targetType = types.find(t =>
+        (t.name || t.Name || '').toLowerCase() === propArticleType.toLowerCase()
       );
-      const defaultArticleType = postType ? (postType.id || postType.Id || postType.value || postType.Value) : '';
+      const selectedArticleType = targetType ? (targetType.id || targetType.Id || targetType.value || targetType.Value) : '';
 
       setFormState(prev => ({
         ...prev,
@@ -85,9 +99,9 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
         dataLoading: false,
       }));
 
-      // Set default ArticleType to Post
-      if (defaultArticleType) {
-        setFormData(prev => ({ ...prev, articleType: defaultArticleType }));
+      // Set ArticleType based on prop
+      if (selectedArticleType) {
+        setFormData(prev => ({ ...prev, articleType: selectedArticleType }));
       }
     } catch (error) {
       console.error('Error loading form data:', error);
@@ -221,6 +235,8 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
         AudienceTypes: formData.audienceTypes.length > 0 ? formData.audienceTypes.map(id => parseInt(id, 10)) : null,
         Tags: formData.tags.length > 0 ? formData.tags : ['general'],
         Visibility: formData.visibility,
+        AttachmentUrls: formData.attachments.filter(url => url.trim() !== ''),
+        PollOptions: formData.pollOptions.filter(opt => opt.trim() !== ''),
       };
 
       console.log('Submitting article data:', articleData);
@@ -273,17 +289,15 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
     <div className="create-article-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="create-article-container">
         {/* Header */}
+        {/* Header */}
         <div className="create-article-header">
           <div className="header-content">
             <div className="header-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 20h9"></path>
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-              </svg>
+              <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>{currentTypeConfig.icon}</span>
             </div>
             <div>
-              <h2 className="header-title">Create New Article</h2>
-              <p className="header-subtitle">Share your thoughts with the community</p>
+              <h2 className="header-title">{currentTypeConfig.title}</h2>
+              <p className="header-subtitle">{currentTypeConfig.subtitle}</p>
             </div>
           </div>
           <button className="close-btn" onClick={onClose} disabled={loading}>
@@ -324,10 +338,10 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
-              {/* Title */}
+              {/* Title - Common for all */}
               <div className="form-group">
                 <label className="form-label">
-                  Title <span className="required">*</span>
+                  {propArticleType === 'question' ? 'Question' : 'Title'} <span className="required">*</span>
                 </label>
                 <input
                   type="text"
@@ -335,33 +349,123 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
                   name="title"
                   value={formData.title}
                   onChange={handleInputChange}
-                  placeholder="Enter an engaging title for your article..."
+                  placeholder={propArticleType === 'question' ? 'What would you like to ask?' : 'Enter an engaging title...'}
                   autoFocus
                 />
                 {errors.title && <span className="error-text">{errors.title}</span>}
               </div>
 
-              {/* Description - Optional */}
-              <div className="form-group">
-                <label className="form-label">
-                  Description <span className="optional">(Optional)</span>
-                </label>
-                <input
-                  type="text"
-                  className="form-input"
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  placeholder="A brief summary of your article..."
-                  maxLength="1000"
-                />
-                <span className="char-count">{formData.description.length}/1000</span>
-              </div>
+              {/* Description - POst Only */}
+              {propArticleType === 'post' && (
+                <div className="form-group">
+                  <label className="form-label">
+                    Description <span className="optional">(Optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    placeholder="A brief summary of your article..."
+                    maxLength="1000"
+                  />
+                  <span className="char-count">{formData.description.length}/1000</span>
+                </div>
+              )}
 
-              {/* Content */}
+              {/* Attachments - Post Only */}
+              {propArticleType === 'post' && (
+                <div className="form-group">
+                  <label className="form-label">
+                    Attachments <span className="optional">(Image URLs)</span>
+                  </label>
+                  {formData.attachments.map((url, idx) => (
+                    <div key={idx} className="mb-2 d-flex gap-2">
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={url}
+                        onChange={(e) => {
+                          const newAttachments = [...formData.attachments];
+                          newAttachments[idx] = e.target.value;
+                          setFormData(prev => ({ ...prev, attachments: newAttachments }));
+                        }}
+                        placeholder="https://example.com/image.jpg"
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline-danger btn-sm"
+                        onClick={() => {
+                          const newAttachments = formData.attachments.filter((_, i) => i !== idx);
+                          setFormData(prev => ({ ...prev, attachments: newAttachments }));
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {formData.attachments.length < 3 && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-primary mt-1"
+                      onClick={() => setFormData(prev => ({ ...prev, attachments: [...prev.attachments, ''] }))}
+                    >
+                      + Add Image URL
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Poll Options */}
+              {propArticleType === 'poll' && (
+                <div className="form-group">
+                  <label className="form-label">
+                    Poll Options <span className="required">*</span>
+                  </label>
+                  {formData.pollOptions.map((option, idx) => (
+                    <div key={idx} className="mb-2 d-flex gap-2">
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={option}
+                        onChange={(e) => {
+                          const newOptions = [...formData.pollOptions];
+                          newOptions[idx] = e.target.value;
+                          setFormData(prev => ({ ...prev, pollOptions: newOptions }));
+                        }}
+                        placeholder={`Option ${idx + 1}`}
+                      />
+                      {formData.pollOptions.length > 2 && (
+                        <button
+                          type="button"
+                          className="btn btn-outline-danger btn-sm"
+                          onClick={() => {
+                            const newOptions = formData.pollOptions.filter((_, i) => i !== idx);
+                            setFormData(prev => ({ ...prev, pollOptions: newOptions }));
+                          }}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {formData.pollOptions.length < 5 && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-primary mt-1"
+                      onClick={() => setFormData(prev => ({ ...prev, pollOptions: [...prev.pollOptions, ''] }))}
+                    >
+                      + Add Option
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Content / Details */}
               <div className="form-group">
                 <label className="form-label">
-                  Content <span className="required">*</span>
+                  {propArticleType === 'question' ? 'Details' : propArticleType === 'poll' ? 'Description' : 'Content'} <span className="required">*</span>
                 </label>
                 <div className="textarea-wrapper">
                   <textarea
@@ -369,13 +473,17 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
                     name="content"
                     value={formData.content}
                     onChange={handleInputChange}
-                    rows="10"
-                    placeholder="Write your article content here... (Minimum 50 characters)"
+                    rows={propArticleType === 'post' ? "10" : "5"}
+                    placeholder={
+                      propArticleType === 'question'
+                        ? "Provide more details about your question..."
+                        : propArticleType === 'poll'
+                          ? "Explain what you are polling about..."
+                          : "Write your article content here... (Minimum 50 characters)"
+                    }
                   ></textarea>
-                  <span className="markdown-badge">Markdown Supported</span>
                 </div>
                 {errors.content && <span className="error-text">{errors.content}</span>}
-                <span className="char-count">{formData.content.length} characters</span>
               </div>
 
               {/* Two column layout for selects */}
@@ -415,46 +523,45 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
                 </div>
               </div>
 
-              <div className="form-row">
-                {/* Article Type - Required, defaults to Post */}
-                <div className="form-group half">
-                  <label className="form-label">
-                    Article Type <span className="required">*</span>
-                  </label>
-                  <select
-                    className={`form-select ${errors.articleType ? 'error' : ''}`}
-                    name="articleType"
-                    value={formData.articleType}
-                    onChange={handleInputChange}
-                  >
-                    <option value="">Select Type...</option>
-                    {renderSelectOptions(articleTypes)}
-                  </select>
-                  {errors.articleType && <span className="error-text">{errors.articleType}</span>}
-                </div>
+              {/* Intent Type - Optional (Hidden for Polls/Questions to simplify) */}
+              {propArticleType === 'post' && (
+                <div className="form-row">
+                  <div className="form-group half">
+                    <label className="form-label">
+                      Intent <span className="optional">(Optional)</span>
+                    </label>
+                    <select
+                      className="form-select"
+                      name="intentType"
+                      value={formData.intentType}
+                      onChange={handleInputChange}
+                    >
+                      <option value="">Select Intent...</option>
+                      {renderSelectOptions(intentTypes)}
+                    </select>
+                  </div>
 
-                {/* Intent Type - Optional */}
-                <div className="form-group half">
-                  <label className="form-label">
-                    Intent <span className="optional">(Optional)</span>
-                  </label>
-                  <select
-                    className="form-select"
-                    name="intentType"
-                    value={formData.intentType}
-                    onChange={handleInputChange}
-                  >
-                    <option value="">Select Intent...</option>
-                    {renderSelectOptions(intentTypes)}
-                  </select>
+                  {/* Visibility */}
+                  <div className="form-group half">
+                    <label className="form-label">Visibility</label>
+                    <select
+                      className="form-select"
+                      name="visibility"
+                      value={formData.visibility}
+                      onChange={handleInputChange}
+                    >
+                      <option value="Public">Public</option>
+                      <option value="Private">Private</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="form-row">
-                {/* Audience Types - Optional, Multi-select */}
-                <div className="form-group half">
+              {/* Audience Types - Post Only */}
+              {propArticleType === 'post' && (
+                <div className="form-group">
                   <label className="form-label">
-                    Target Audience <span className="optional">(Optional, Multi-select)</span>
+                    Target Audience <span className="optional">(Optional)</span>
                   </label>
                   <div className="multi-select-container">
                     {audienceTypes.map((audience, idx) => {
@@ -489,21 +596,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
                     })}
                   </div>
                 </div>
-
-                {/* Visibility */}
-                <div className="form-group half">
-                  <label className="form-label">Visibility</label>
-                  <select
-                    className="form-select"
-                    name="visibility"
-                    value={formData.visibility}
-                    onChange={handleInputChange}
-                  >
-                    <option value="Public">Public (Everyone can see)</option>
-                    <option value="Private">Private (Only you)</option>
-                  </select>
-                </div>
-              </div>
+              )}
 
               {/* Tags - Multi-select with free text */}
               <div className="form-group">
@@ -1122,7 +1215,7 @@ function CreateArticleModal({ show, onClose, onSuccess }) {
           }
         }
       `}</style>
-    </div>
+    </div >
   );
 }
 

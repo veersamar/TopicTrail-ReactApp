@@ -163,6 +163,20 @@ export const api = {
     }
   },
 
+  getMyArticles: async (token, userId, pageNumber = 1) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/article/myarticles?userId=${userId}&pageNumber=${pageNumber}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await handleResponse(res);
+      // Adjust based on actual response structure if different
+      return Array.isArray(data.articles) ? data.articles : (Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching my articles:', error);
+      return [];
+    }
+  },
+
   getArticleById: async (token, id) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/article/${id}`, {

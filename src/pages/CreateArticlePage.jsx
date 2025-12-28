@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 
 function CreateArticlePage() {
     const { token, userId } = useAuth();
@@ -149,9 +151,11 @@ function CreateArticlePage() {
 
     // Handle page content change
     const handlePageChange = (index, value) => {
-        const newPages = [...formData.pages];
-        newPages[index] = value;
-        setFormData(prev => ({ ...prev, pages: newPages }));
+        setFormData(prev => {
+            const newPages = [...prev.pages];
+            newPages[index] = value;
+            return { ...prev, pages: newPages };
+        });
 
         // Clear content error if any
         if (formState.errors.content) {
@@ -160,17 +164,22 @@ function CreateArticlePage() {
     };
 
     const addPage = () => {
-        setFormData(prev => ({ ...prev, pages: [...prev.pages, ''] }));
-        setActiveContentPage(formData.pages.length); // Switch to new page
+        setFormData(prev => {
+            const newPages = [...prev.pages, ''];
+            setActiveContentPage(newPages.length - 1);
+            return { ...prev, pages: newPages };
+        });
     };
 
     const removePage = (index) => {
-        if (formData.pages.length <= 1) return;
-        const newPages = formData.pages.filter((_, i) => i !== index);
-        setFormData(prev => ({ ...prev, pages: newPages }));
-        if (activeContentPage >= newPages.length) {
-            setActiveContentPage(newPages.length - 1);
-        }
+        setFormData(prev => {
+            if (prev.pages.length <= 1) return prev;
+            const newPages = prev.pages.filter((_, i) => i !== index);
+            if (activeContentPage >= newPages.length) {
+                setActiveContentPage(newPages.length - 1);
+            }
+            return { ...prev, pages: newPages };
+        });
     };
 
     // Tag handlers
@@ -607,16 +616,19 @@ function CreateArticlePage() {
                                     <label className="form-label fw-bold">
                                         {articleTypeParam === 'question' ? 'Details' : articleTypeParam === 'poll' ? 'Description' : `Content - Page ${activeContentPage + 1}`} <span className="text-danger">*</span>
                                     </label>
-                                    <textarea
-                                        className={`form-control ${errors.content ? 'is-invalid' : ''}`}
-                                        value={formData.pages[activeContentPage]}
-                                        onChange={(e) => handlePageChange(activeContentPage, e.target.value)}
-                                        rows={15}
-                                        placeholder="Write your content here..."
-                                    ></textarea>
-                                    {errors.content && <div className="invalid-feedback">{errors.content}</div>}
+                                    <div className={`quill-wrapper ${errors.content ? 'is-invalid border border-danger rounded' : ''}`} style={{ background: '#fff' }}>
+                                        <ReactQuill
+                                            key={activeContentPage}
+                                            theme="snow"
+                                            value={formData.pages[activeContentPage] || ''}
+                                            onChange={(value) => handlePageChange(activeContentPage, value)}
+                                            placeholder="Write your content here..."
+                                            style={{ height: '300px', marginBottom: '50px' }}
+                                        />
+                                    </div>
+                                    {errors.content && <div className="invalid-feedback d-block">{errors.content}</div>}
                                     <div className="form-text text-end">
-                                        Words: {formData.pages[activeContentPage].trim().split(/\s+/).filter(w => w.length > 0).length}
+                                        Words: {(formData.pages[activeContentPage] || '').replace(/<[^>]*>/g, '').trim().split(/\s+/).filter(w => w.length > 0).length}
                                     </div>
                                 </div>
 

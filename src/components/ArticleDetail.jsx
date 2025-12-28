@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
+import 'react-quill-new/dist/quill.snow.css';
 
 function ArticleDetail() {
   const { id } = useParams();
@@ -479,6 +480,8 @@ function ArticleDetail() {
         </div>
       </article>
 
+
+
       {/* Article Content */}
       <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '8px' }}>
         <div className="card-body p-5">
@@ -506,16 +509,15 @@ function ArticleDetail() {
           )}
 
           <div
+            className="article-content"
             style={{
               fontSize: '1.05rem',
               lineHeight: '1.8',
               color: '#333',
-              whiteSpace: 'pre-wrap',
               wordWrap: 'break-word',
             }}
-          >
-            {getContent().split('<!-- PAGE_BREAK -->')[activePage]}
-          </div>
+            dangerouslySetInnerHTML={{ __html: getContent().split('<!-- PAGE_BREAK -->')[activePage] }}
+          />
 
           {/* Pagination Controls (Bottom) */}
           {getContent().split('<!-- PAGE_BREAK -->').length > 1 && (

@@ -90,6 +90,7 @@ function AppContent() {
         <Route path="/profile" element={<Profile />} />
         <Route path="/my-articles" element={<ArticlesFeed />} />
         <Route path="/create-article" element={<CreateArticlePage />} />
+        <Route path="/edit-article/:id" element={<CreateArticlePage />} />
         <Route path="/tags" element={<TagsPage />} />
         <Route path="/users" element={<div className="p-4">Users (Coming Soon)</div>} />
         <Route path="/settings" element={

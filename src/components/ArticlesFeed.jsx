@@ -164,7 +164,7 @@ function ArticlesFeed() {
       <div className="d-flex flex-column border-top">
         {filteredArticles.length > 0 ? (
           filteredArticles.map(article => (
-            <ArticleCard key={article.id} article={article} />
+            <ArticleCard key={article.id || article.Id || Math.random()} article={article} isAssumedOwner={isMyArticles} />
           ))
         ) : (
           <div className="py-5 text-center text-muted">

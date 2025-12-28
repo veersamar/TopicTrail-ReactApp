@@ -1,23 +1,26 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
 function CreateArticlePage() {
     const { token, userId } = useAuth();
     const navigate = useNavigate();
+    const { id } = useParams();
+    const isEditMode = !!id;
     const [searchParams] = useSearchParams();
-    const articleTypeParam = searchParams.get('type') || 'post';
+    // In edit mode, type is derived from the article, but initially fallback to param or post
+    const [articleTypeParam, setArticleTypeParam] = useState(searchParams.get('type') || 'post');
 
     const tagInputRef = useRef(null);
 
     // Type configuration
     const typeConfig = {
-        post: { icon: '📝', title: 'Create New Post', subtitle: 'Share an article or blog with the community' },
-        question: { icon: '❓', title: 'Ask a Question', subtitle: 'Get answers from the community' },
-        poll: { icon: '📊', title: 'Create a Poll', subtitle: 'Gather opinions from the community' },
+        post: { icon: '📝', title: isEditMode ? 'Edit Post' : 'Create New Post', subtitle: isEditMode ? 'Update your article' : 'Share an article or blog with the community' },
+        question: { icon: '❓', title: isEditMode ? 'Edit Question' : 'Ask a Question', subtitle: isEditMode ? 'Update your question' : 'Get answers from the community' },
+        poll: { icon: '📊', title: isEditMode ? 'Edit Poll' : 'Create a Poll', subtitle: isEditMode ? 'Update your poll' : 'Gather opinions from the community' },
     };
 
     const currentTypeConfig = typeConfig[articleTypeParam] || typeConfig.post;
@@ -60,7 +63,92 @@ function CreateArticlePage() {
     // Fetch master data on mount
     useEffect(() => {
         fetchMasterData();
-    }, [articleTypeParam]);
+    }, []);
+
+    // Fetch Article Data in Edit Mode
+    useEffect(() => {
+        if (isEditMode && token && userId) {
+            const fetchArticleDetails = async () => {
+                try {
+                    setFormState(prev => ({ ...prev, dataLoading: true }));
+                    const articleResponse = await api.getArticleById(token, id);
+
+                    if (!articleResponse) {
+                        setFormState(prev => ({ ...prev, errors: { submit: 'Article not found' }, dataLoading: false }));
+                        return;
+                    }
+
+                    // Check ownership (soft check - let backend enforce if frontend data is incomplete)
+                    const article = articleResponse.article || articleResponse;
+                    const creatorId = article.CreatorId || article.creatorId || (article.creator && article.creator.id) || (article.Creator && article.Creator.Id);
+
+                    if (creatorId && userId && String(creatorId) !== String(userId)) {
+                        console.warn("Frontend ownership check failed:", { userId, creatorId });
+                        alert("You do not appear to be the owner of this article.");
+                        navigate('/articles');
+                        return;
+                    }
+
+                    // Map API data to Form Data
+                    // Note: API keys are usually PascalCase, but can vary
+                    const typeId = article.ArticleType || article.articleType || article.ArticleTypeId || article.articleTypeId || (article.type && (article.type.id || article.type.Id));
+
+                    // Determine type string for UI config (post/question/poll)
+                    // We need to look it up in master data or guess. 
+                    // Let's rely on formState.articleTypes if loaded, or just set it later.
+                    // For now, populated the form.
+
+                    const content = article.Content || article.content || '';
+                    const pages = content.split('<!-- PAGE_BREAK -->');
+
+                    // Set Article Type Param for UI
+                    // We need to find the name of the type to set 'articleTypeParam' (post/question etc)
+                    // But 'articleTypeParam' is a local state now.
+                    // We'll update it after master data is loaded or just here if we can.
+
+                    setFormData({
+                        title: article.Title || article.title || '',
+                        description: article.Description || article.description || '',
+                        pages: pages.length > 0 ? pages : [''],
+                        categoryId: article.CategoryId || article.categoryId || '',
+                        subCategoryId: article.SubCategoryId || article.subCategoryId || '',
+                        articleType: typeId,
+                        intentType: article.IntentType || article.intentType || '',
+                        audienceTypes: (article.AudienceTypes || article.audienceTypes || [])
+                            .map(String), // Ensure strings for checkboxes
+
+                        visibility: article.Visibility || article.visibility || 'Public',
+                        tags: (() => {
+                            const raw = article.Tags || article.tags;
+                            if (Array.isArray(raw)) return raw.map(t => typeof t === 'object' ? (t.name || t.Name || '') : String(t)).filter(t => t);
+                            if (typeof raw === 'string') return raw.split(',').map(t => t.trim()).filter(t => t);
+                            return [];
+                        })(),
+                        pollOptions: article.PollOptions || article.pollOptions || ['', ''],
+                        attachments: article.AttachmentUrls || article.attachmentUrls || [],
+                    });
+
+                    setFormState(prev => ({ ...prev, dataLoading: false }));
+
+                } catch (error) {
+                    console.error("Error fetching article for edit:", error);
+                    setFormState(prev => ({ ...prev, dataLoading: false, errors: { submit: 'Failed to load article details' } }));
+                }
+            };
+            fetchArticleDetails();
+        }
+    }, [isEditMode, id, token, userId]);
+
+    // Update articleTypeParam when formData.articleType changes and master data is available
+    useEffect(() => {
+        if (formData.articleType && formState.articleTypes.length > 0) {
+            const typeObj = formState.articleTypes.find(t => t.id === formData.articleType || t.Id === formData.articleType);
+            if (typeObj) {
+                const typeName = (typeObj.name || typeObj.Name || '').toLowerCase();
+                setArticleTypeParam(typeName);
+            }
+        }
+    }, [formData.articleType, formState.articleTypes]);
 
     // Fetch master data and set ArticleType from prop
     const fetchMasterData = async () => {
@@ -93,7 +181,7 @@ function CreateArticlePage() {
                 dataLoading: false,
             }));
 
-            if (selectedArticleType) {
+            if (selectedArticleType && !isEditMode) {
                 setFormData(prev => ({ ...prev, articleType: selectedArticleType }));
             }
         } catch (error) {
@@ -217,18 +305,20 @@ function CreateArticlePage() {
 
         if (!formData.title?.trim()) {
             newErrors.title = 'Title is required';
-            setActiveTab('basics'); // Switch to basics tab to show error
+            setActiveTab('basics');
         } else if (formData.title.length < 10) {
             newErrors.title = 'Title must be at least 10 characters';
             setActiveTab('basics');
         }
 
         const totalContent = formData.pages.join('').trim();
-        if (!totalContent) {
+        const textContent = totalContent.replace(/<[^>]*>/g, '').trim();
+
+        if (!textContent) {
             newErrors.content = 'Content is required';
             setActiveTab('content');
-        } else if (totalContent.length < 50) {
-            newErrors.content = 'Total content must be at least 50 characters';
+        } else if (textContent.length < 50) {
+            newErrors.content = `Content must be at least 50 characters (current text length: ${textContent.length})`;
             setActiveTab('content');
         }
 
@@ -239,10 +329,13 @@ function CreateArticlePage() {
 
         if (!formData.articleType) {
             newErrors.articleType = 'Article Type is required';
-            setActiveTab('basics'); // Should not happen usually as it is set from URL
+            setActiveTab('basics');
         }
 
         if (Object.keys(newErrors).length > 0) {
+            console.warn("Validation Failed:", newErrors);
+            const errorMsg = Object.entries(newErrors).map(([k, v]) => `${k}: ${v}`).join('\n');
+            alert("Validation Failed:\n" + errorMsg);
             setFormState(prev => ({ ...prev, errors: newErrors }));
             return false;
         }
@@ -252,6 +345,7 @@ function CreateArticlePage() {
     // Submit handler
     const handleSubmit = async (e) => {
         e.preventDefault();
+
         if (!validateForm()) return;
 
         try {
@@ -273,13 +367,20 @@ function CreateArticlePage() {
             };
 
             console.log('Submitting article data:', articleData);
-            const result = await api.createArticle(token, userId, articleData);
+            console.log('Submitting article data:', articleData);
+
+            let result;
+            if (isEditMode) {
+                result = await api.updateArticle(token, id, userId, articleData);
+            } else {
+                result = await api.createArticle(token, userId, articleData);
+            }
 
             if (result.success) {
                 setFormState(prev => ({
                     ...prev,
                     loading: false,
-                    successMessage: 'Article created successfully!',
+                    successMessage: isEditMode ? 'Article updated successfully!' : 'Article created successfully!',
                 }));
 
                 setTimeout(() => {
@@ -728,9 +829,9 @@ function CreateArticlePage() {
                                             {loading ? (
                                                 <>
                                                     <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                                    Publishing...
+                                                    {isEditMode ? 'Updating...' : 'Publishing...'}
                                                 </>
-                                            ) : 'Publish Article'}
+                                            ) : (isEditMode ? 'Update Article' : 'Publish Article')}
                                         </button>
                                     </div>
                                 </div>

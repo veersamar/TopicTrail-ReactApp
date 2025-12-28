@@ -230,9 +230,9 @@ export const api = {
     }
   },
 
-  updateArticle: async (token, id, data) => {
+  updateArticle: async (token, id, userId, data) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/articles/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/article/${id}?userId=${userId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -257,7 +257,7 @@ export const api = {
 
   deleteArticle: async (token, id) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/articles/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/article/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });

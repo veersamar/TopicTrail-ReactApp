@@ -3,12 +3,12 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 
-function ArticleCard({ article }) {
-  // We'll keep it simple for the list view. 
-  // API interactions for Like/Comment are reserved for Detail view or handled simpler here if needed.
-  // For now, static display of stats.
+function ArticleCard({ article, isAssumedOwner = false }) {
+  const { userId } = useAuth();
 
   const getArticleId = () => article?.id || article?.Id;
+  const getCreatorId = () => article?.creatorId || article?.CreatorId || article?.creator?.id;
+
   const getTitle = () => article?.title || article?.Title || 'Untitled';
   const getDescription = () => article?.description || article?.Description || '';
   const getViews = () => article?.viewCount || article?.ViewCount || 0;
@@ -21,6 +21,19 @@ function ArticleCard({ article }) {
     if (!d) return '';
     return new Date(d).toLocaleDateString();
   };
+
+  const creatorId = getCreatorId();
+  const isOwner = isAssumedOwner || (userId && creatorId && String(userId) === String(creatorId));
+
+  // DEBUG LOG
+  console.log(`ArticleCard [${getTitle()}]:`, {
+    id: getArticleId(),
+    userId,
+    creatorId,
+    isOwner,
+    userIdType: typeof userId,
+    creatorIdType: typeof creatorId
+  });
 
   return (
     <div className="d-flex p-3 border-bottom article-list-item position-relative">
@@ -68,6 +81,11 @@ function ArticleCard({ article }) {
 
           {/* Meta */}
           <div className="d-flex align-items-center gap-1 small text-muted ms-auto">
+            {isOwner && (
+              <Link to={`/edit-article/${getArticleId()}`} className="text-decoration-none me-2 text-primary">
+                <i className="bi bi-pencil-square me-1"></i>Edit
+              </Link>
+            )}
             <span style={{ color: '#0074CC' }}>{getCreator()}</span>
             <span>asked {getDate()}</span>
           </div>

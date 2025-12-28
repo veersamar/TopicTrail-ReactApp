@@ -1,26 +1,14 @@
-import React, { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import React from 'react';
+import { Outlet, useNavigate } from 'react-router-dom';
 import Navbar from './Navigation';
 import LeftSidebar from './LeftSidebar';
 import TrendingSidebar from './TrendingSidebar';
-import CreateArticleModal from './CreateArticleModal';
 
 function MainLayout() {
-    const [showCreateModal, setShowCreateModal] = useState(false);
-    const [selectedArticleType, setSelectedArticleType] = useState('post');
+    const navigate = useNavigate();
 
     const handleCreateClick = (type) => {
-        setSelectedArticleType(type || 'post');
-        setShowCreateModal(true);
-    };
-
-    const handleCloseModal = () => {
-        setShowCreateModal(false);
-        setSelectedArticleType('post');
-    };
-
-    const handleCreateSuccess = () => {
-        window.location.reload();
+        navigate(`/create-article?type=${type || 'post'}`);
     };
 
     return (
@@ -45,14 +33,6 @@ function MainLayout() {
                     </aside>
                 </div>
             </div>
-
-            {/* Create Article Modal */}
-            <CreateArticleModal
-                show={showCreateModal}
-                onClose={handleCloseModal}
-                onSuccess={handleCreateSuccess}
-                articleType={selectedArticleType}
-            />
         </div>
     );
 }

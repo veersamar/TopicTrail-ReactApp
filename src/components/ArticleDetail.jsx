@@ -25,6 +25,8 @@ function ArticleDetail() {
     submittingComment: false,
   });
 
+  const [activePage, setActivePage] = useState(0);
+
   // ========== FETCH ARTICLE ON MOUNT ==========
   useEffect(() => {
     if (!id || !token) {
@@ -480,6 +482,29 @@ function ArticleDetail() {
       {/* Article Content */}
       <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '8px' }}>
         <div className="card-body p-5">
+          {/* Pagination Controls (Top) */}
+          {getContent().split('<!-- PAGE_BREAK -->').length > 1 && (
+            <div className="d-flex justify-content-between mb-4 align-items-center">
+              <button
+                className="btn btn-outline-secondary btn-sm"
+                disabled={activePage === 0}
+                onClick={() => setActivePage(prev => Math.max(0, prev - 1))}
+              >
+                <i className="bi bi-arrow-left me-1"></i> Prev Page
+              </button>
+              <span className="text-muted small fw-bold">
+                Page {activePage + 1} of {getContent().split('<!-- PAGE_BREAK -->').length}
+              </span>
+              <button
+                className="btn btn-outline-secondary btn-sm"
+                disabled={activePage >= getContent().split('<!-- PAGE_BREAK -->').length - 1}
+                onClick={() => setActivePage(prev => Math.min(getContent().split('<!-- PAGE_BREAK -->').length - 1, prev + 1))}
+              >
+                Next Page <i className="bi bi-arrow-right ms-1"></i>
+              </button>
+            </div>
+          )}
+
           <div
             style={{
               fontSize: '1.05rem',
@@ -489,8 +514,23 @@ function ArticleDetail() {
               wordWrap: 'break-word',
             }}
           >
-            {getContent()}
+            {getContent().split('<!-- PAGE_BREAK -->')[activePage]}
           </div>
+
+          {/* Pagination Controls (Bottom) */}
+          {getContent().split('<!-- PAGE_BREAK -->').length > 1 && (
+            <div className="d-flex justify-content-center mt-4 pt-3 border-top">
+              {getContent().split('<!-- PAGE_BREAK -->').map((_, idx) => (
+                <button
+                  key={idx}
+                  className={`btn btn-sm mx-1 ${activePage === idx ? 'btn-primary' : 'btn-outline-secondary'}`}
+                  onClick={() => setActivePage(idx)}
+                >
+                  {idx + 1}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

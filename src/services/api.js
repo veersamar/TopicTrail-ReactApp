@@ -1,7 +1,7 @@
 const envUrl = process.env.REACT_APP_API_URL;
 const API_BASE_URL = (envUrl && envUrl !== 'undefined' && envUrl.startsWith('http'))
   ? envUrl
-  : 'https://localhost:7083';
+  : 'http://localhost:5064';
 
 console.log('API Config:', { envUrl, API_BASE_URL }); // Debug log
 
@@ -279,7 +279,7 @@ export const api = {
   searchArticles: async (token, query) => {
     try {
       const res = await fetch(
-        `${API_BASE_URL}/api/articles/search?query=${encodeURIComponent(query)}`,
+        `${API_BASE_URL}/api/article/search?query=${encodeURIComponent(query)}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const data = await handleResponse(res);
@@ -578,15 +578,207 @@ export const api = {
     }
   },
 
+  // ==================== MEDIA/ATTACHMENT ENDPOINTS ====================
+
+  /**
+   * Get all inline media for an article
+   * @param {string} token - Auth token
+   * @param {number} articleId - Article ID
+   * @returns {Promise<Array<{id: string, fileName: string, url: string}>>}
+   */
+  getArticleMedia: async (token, articleId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/article/${articleId}/media`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await handleResponse(res);
+      return Array.isArray(data) ? data : (data.data || data.media || []);
+    } catch (error) {
+      console.error('Error fetching article media:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Get all attachments for an article
+   * @param {string} token - Auth token
+   * @param {number} articleId - Article ID
+   * @returns {Promise<Array<{id: string, fileName: string, fileSize: number, downloadUrl: string}>>}
+   */
+  getArticleAttachments: async (token, articleId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/article/${articleId}/attachment`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await handleResponse(res);
+      return Array.isArray(data) ? data : (data.data || data.attachments || []);
+    } catch (error) {
+      console.error('Error fetching article attachments:', error);
+      return [];
+    }
+  },
+
+
+  /**
+   * Upload inline image for article content
+   * @param {string} token - Auth token
+   * @param {number} articleId - Article ID
+   * @param {File} file - Image file to upload
+   * @returns {Promise<{success: boolean, url?: string, error?: string}>}
+   */
+  uploadArticleMedia: async (token, articleId, file) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(`${API_BASE_URL}/api/article/${articleId}/media`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const response = await handleResponse(res);
+      console.log('uploadArticleMedia response:', response);
+
+      // Extract URL from various possible property names
+      let imageUrl = response.url || response.Url || response.imageUrl || response.ImageUrl || response.filePath || response.FilePath;
+
+      // If URL is relative, prepend the API base URL
+      if (imageUrl && !imageUrl.startsWith('http')) {
+        imageUrl = `${API_BASE_URL}${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`;
+      }
+
+      console.log('Constructed image URL:', imageUrl);
+
+      return {
+        ...response,
+        success: response.success || response.status === 200 || response.status === 201,
+        url: imageUrl,
+        id: response.id || response.Id || response.mediaId || response.MediaId,
+      };
+    } catch (error) {
+      console.error('Error uploading article media:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to upload image',
+        status: error.status,
+      };
+    }
+  },
+
+  /**
+   * Upload file attachment for article
+   * @param {string} token - Auth token
+   * @param {number} articleId - Article ID
+   * @param {File} file - File to upload (PDF, Word, Excel, images)
+   * @returns {Promise<{success: boolean, id?: string, fileName?: string, downloadUrl?: string, error?: string}>}
+   */
+  uploadArticleAttachment: async (token, articleId, file) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(`${API_BASE_URL}/api/article/${articleId}/attachment`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const response = await handleResponse(res);
+      return {
+        success: response.success || response.status === 200 || response.status === 201,
+        id: response.id || response.Id || response.attachmentId || response.AttachmentId,
+        fileName: response.fileName || response.FileName || file.name,
+        downloadUrl: response.downloadUrl || response.DownloadUrl,
+        fileSize: response.fileSize || response.FileSize || file.size,
+        ...response,
+      };
+    } catch (error) {
+      console.error('Error uploading article attachment:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to upload attachment',
+        status: error.status,
+      };
+    }
+  },
+
+  /**
+   * Delete inline media from article
+   * @param {string} token - Auth token
+   * @param {number} articleId - Article ID
+   * @param {string} mediaId - Media ID to delete
+   */
+  deleteArticleMedia: async (token, articleId, mediaId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/article/${articleId}/media/${mediaId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const response = await handleResponse(res);
+      return {
+        success: response.success || response.status === 200,
+        ...response,
+      };
+    } catch (error) {
+      console.error('Error deleting article media:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to delete media',
+        status: error.status,
+      };
+    }
+  },
+
+  /**
+   * Delete attachment from article
+   * @param {string} token - Auth token
+   * @param {number} articleId - Article ID
+   * @param {string} attachmentId - Attachment ID to delete
+   */
+  deleteArticleAttachment: async (token, articleId, attachmentId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/article/${articleId}/attachment/${attachmentId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const response = await handleResponse(res);
+      return {
+        success: response.success || response.status === 200,
+        ...response,
+      };
+    } catch (error) {
+      console.error('Error deleting article attachment:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to delete attachment',
+        status: error.status,
+      };
+    }
+  },
+
+  /**
+   * Get download URL for attachment
+   * @param {string} attachmentId - Attachment ID
+   * @returns {string} Full download URL
+   */
+  getAttachmentDownloadUrl: (attachmentId) => {
+    return `${API_BASE_URL}/api/attachment/${attachmentId}/download`;
+  },
+
   getArticlesByTag: async (token, tagName, pageNumber = 1) => {
     try {
-      // Assuming endpoint /api/articles?tag={tagName} or similar.
-      // Based on ArticlesFeed logic, it might be better to reuse getArticles or searchArticles if they supported tags.
-      // But creating a dedicated call is safer if the backend logic is specific.
-      // Let's try to query /api/articles/search with a tag param or if there's a specific route.
-      // Since I don't see the Swagger, I'll guess standard REST or use the search endpoint with a special prefix if needed.
-      // BUT, let's assume a dedicated endpoint or query param on articles.
-      const res = await fetch(`${API_BASE_URL}/api/articles?tag=${encodeURIComponent(tagName)}&pageNumber=${pageNumber}`, {
+      const res = await fetch(`${API_BASE_URL}/api/article?tag=${encodeURIComponent(tagName)}&pageNumber=${pageNumber}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await handleResponse(res);

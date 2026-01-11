@@ -1,9 +1,35 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
+
+// Helper to format file size
+const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+// Helper to get file icon
+const getFileIcon = (fileName) => {
+    const ext = fileName.split('.').pop().toLowerCase();
+    const icons = {
+        pdf: 'bi-file-earmark-pdf text-danger',
+        doc: 'bi-file-earmark-word text-primary',
+        docx: 'bi-file-earmark-word text-primary',
+        xls: 'bi-file-earmark-excel text-success',
+        xlsx: 'bi-file-earmark-excel text-success',
+        png: 'bi-file-earmark-image text-info',
+        jpg: 'bi-file-earmark-image text-info',
+        jpeg: 'bi-file-earmark-image text-info',
+        gif: 'bi-file-earmark-image text-info',
+    };
+    return icons[ext] || 'bi-file-earmark text-secondary';
+};
 
 function CreateArticlePage() {
     const { token, userId } = useAuth();
@@ -15,6 +41,9 @@ function CreateArticlePage() {
     const [articleTypeParam, setArticleTypeParam] = useState(searchParams.get('type') || 'post');
 
     const tagInputRef = useRef(null);
+    const quillRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const imageInputRef = useRef(null);
 
     // Type configuration
     const typeConfig = {
@@ -40,6 +69,14 @@ function CreateArticlePage() {
     const [activeTab, setActiveTab] = useState('basics');
     const [activeContentPage, setActiveContentPage] = useState(0);
 
+    // New state for attachments and image uploads
+    const [pendingAttachments, setPendingAttachments] = useState([]); // Files to upload
+    const [uploadedAttachments, setUploadedAttachments] = useState([]); // Already uploaded (edit mode)
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [uploadingAttachment, setUploadingAttachment] = useState(false);
+    const [uploadedArticleId, setUploadedArticleId] = useState(null); // For tracking article ID after creation
+    const [uploadedMedia, setUploadedMedia] = useState([]); // Inline images already uploaded (edit mode)
+
     const [formData, setFormData] = useState({
         title: '',
         description: '',
@@ -52,7 +89,6 @@ function CreateArticlePage() {
         visibility: 'Public',
         tags: [],
         pollOptions: ['', ''],
-        attachments: [],
     });
 
     // Tag input state
@@ -70,12 +106,12 @@ function CreateArticlePage() {
         if (isEditMode && token && userId) {
             const fetchArticleDetails = async () => {
                 try {
-                    setFormState(prev => ({ ...prev, dataLoading: true }));
+                    setFormState(prev => ({ ...prev, dataLoading: true, errors: {} }));
                     const articleResponse = await api.getArticleById(token, id);
+                    console.log("Edit Article Response:", articleResponse);
 
                     if (!articleResponse) {
-                        setFormState(prev => ({ ...prev, errors: { submit: 'Article not found' }, dataLoading: false }));
-                        return;
+                        throw new Error('Article not found or API error');
                     }
 
                     // Check ownership (soft check - let backend enforce if frontend data is incomplete)
@@ -90,21 +126,10 @@ function CreateArticlePage() {
                     }
 
                     // Map API data to Form Data
-                    // Note: API keys are usually PascalCase, but can vary
                     const typeId = article.ArticleType || article.articleType || article.ArticleTypeId || article.articleTypeId || (article.type && (article.type.id || article.type.Id));
-
-                    // Determine type string for UI config (post/question/poll)
-                    // We need to look it up in master data or guess. 
-                    // Let's rely on formState.articleTypes if loaded, or just set it later.
-                    // For now, populated the form.
 
                     const content = article.Content || article.content || '';
                     const pages = content.split('<!-- PAGE_BREAK -->');
-
-                    // Set Article Type Param for UI
-                    // We need to find the name of the type to set 'articleTypeParam' (post/question etc)
-                    // But 'articleTypeParam' is a local state now.
-                    // We'll update it after master data is loaded or just here if we can.
 
                     setFormData({
                         title: article.Title || article.title || '',
@@ -114,8 +139,9 @@ function CreateArticlePage() {
                         subCategoryId: article.SubCategoryId || article.subCategoryId || '',
                         articleType: typeId,
                         intentType: article.IntentType || article.intentType || '',
-                        audienceTypes: (article.AudienceTypes || article.audienceTypes || [])
-                            .map(String), // Ensure strings for checkboxes
+                        audienceTypes: Array.isArray(article.AudienceTypes || article.audienceTypes)
+                            ? (article.AudienceTypes || article.audienceTypes).map(String)
+                            : [],
 
                         visibility: article.Visibility || article.visibility || 'Public',
                         tags: (() => {
@@ -125,14 +151,32 @@ function CreateArticlePage() {
                             return [];
                         })(),
                         pollOptions: article.PollOptions || article.pollOptions || ['', ''],
-                        attachments: article.AttachmentUrls || article.attachmentUrls || [],
                     });
+
+                    // Load existing attachments for edit mode using dedicated API
+                    const fetchedAttachments = await api.getArticleAttachments(token, id);
+                    setUploadedAttachments(fetchedAttachments.map(att => ({
+                        id: att.id || att.Id,
+                        fileName: att.fileName || att.FileName || att.name || 'Unknown',
+                        fileSize: att.fileSize || att.FileSize || 0,
+                        downloadUrl: att.downloadUrl || att.DownloadUrl || (api.getAttachmentDownloadUrl ? api.getAttachmentDownloadUrl(att.id || att.Id) : ''),
+                    })));
+
+                    // Load existing inline media for edit mode (for management purposes)
+                    const fetchedMedia = await api.getArticleMedia(token, id);
+                    setUploadedMedia(fetchedMedia.map(m => ({
+                        id: m.id || m.Id,
+                        fileName: m.fileName || m.FileName,
+                        url: m.url || m.Url,
+                    })));
+
+                    setUploadedArticleId(parseInt(id, 10));
 
                     setFormState(prev => ({ ...prev, dataLoading: false }));
 
                 } catch (error) {
                     console.error("Error fetching article for edit:", error);
-                    setFormState(prev => ({ ...prev, dataLoading: false, errors: { submit: 'Failed to load article details' } }));
+                    setFormState(prev => ({ ...prev, dataLoading: false, errors: { submit: error.message || 'Failed to load article details' } }));
                 }
             };
             fetchArticleDetails();
@@ -299,7 +343,238 @@ function CreateArticlePage() {
         }
     };
 
-    // Validation
+    // ==================== IMAGE UPLOAD HANDLER ====================
+    // Handler for inline image upload in editor
+    const handleImageUpload = useCallback(async () => {
+        // Open file picker
+        if (imageInputRef.current) {
+            imageInputRef.current.click();
+        }
+    }, []);
+
+    const handleImageFileSelected = useCallback(async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Validate image type
+        if (!file.type.startsWith('image/')) {
+            alert('Please select an image file (PNG, JPG, GIF)');
+            return;
+        }
+
+        // Validate size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            alert('Image size must be less than 5MB');
+            return;
+        }
+
+        // For new articles without an ID yet, we need to create the article first
+        // For edit mode or if we already have an article ID, upload directly
+        const articleId = uploadedArticleId || (isEditMode ? parseInt(id, 10) : null);
+
+        if (!articleId) {
+            // For new articles, insert a placeholder and upload after article creation
+            // OR we can require saving draft first. For now, show message.
+            alert('Please save your article first before adding inline images. You can add images after the initial save.');
+            e.target.value = '';
+            return;
+        }
+
+        try {
+            setUploadingImage(true);
+            console.log('Uploading image for articleId:', articleId);
+            const result = await api.uploadArticleMedia(token, articleId, file);
+            console.log('Upload result:', result);
+
+            if (result.success && result.url) {
+                console.log('Inserting image with URL:', result.url);
+                // Insert image into editor at cursor position
+                const quill = quillRef.current?.getEditor?.() || quillRef.current?.editor;
+                if (quill) {
+                    const range = quill.getSelection(true);
+                    quill.insertEmbed(range.index, 'image', result.url);
+                    quill.setSelection(range.index + 1);
+                    console.log('Image inserted successfully');
+                } else {
+                    console.error('Quill editor not available');
+                }
+            } else {
+                console.error('Image upload failed:', result.error);
+                alert('Failed to upload image: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Image upload error:', error);
+            alert('Failed to upload image');
+        } finally {
+            setUploadingImage(false);
+            e.target.value = ''; // Reset input
+        }
+    }, [token, uploadedArticleId, isEditMode, id]);
+
+    // ==================== PASTE IMAGE HANDLER ====================
+    // Intercepts pasted images (base64) and uploads them to backend
+    const handlePasteImage = useCallback(async (file) => {
+        const articleId = uploadedArticleId || (isEditMode ? parseInt(id, 10) : null);
+
+        if (!articleId) {
+            alert('Please save your article first before pasting images. You can paste images after the initial save.');
+            return null;
+        }
+
+        try {
+            setUploadingImage(true);
+            const result = await api.uploadArticleMedia(token, articleId, file);
+
+            if (result.success && result.url) {
+                return result.url;
+            } else {
+                console.error('Paste image upload failed:', result.error);
+                alert('Failed to upload pasted image: ' + (result.error || 'Unknown error'));
+                return null;
+            }
+        } catch (error) {
+            console.error('Paste image upload error:', error);
+            alert('Failed to upload pasted image');
+            return null;
+        } finally {
+            setUploadingImage(false);
+        }
+    }, [token, uploadedArticleId, isEditMode, id]);
+
+    // Effect to attach paste listener to Quill editor
+    useEffect(() => {
+        let attachInterval;
+        let editorRoot = null;
+
+        const handlePaste = async (e) => {
+            const clipboardData = e.clipboardData;
+            if (!clipboardData) return;
+
+            // Check for image files in clipboard
+            const items = clipboardData.items;
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.type.startsWith('image/')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const file = item.getAsFile();
+                    if (file) {
+                        const url = await handlePasteImage(file);
+                        if (url) {
+                            const quillEditor = quillRef.current?.getEditor?.() || quillRef.current?.editor;
+                            if (quillEditor) {
+                                const range = quillEditor.getSelection(true);
+                                quillEditor.insertEmbed(range ? range.index : 0, 'image', url);
+                                if (range) quillEditor.setSelection(range.index + 1);
+                            }
+                        }
+                    }
+                    return; // Only handle first image
+                }
+            }
+        };
+
+        const attachListener = () => {
+            const quillEditor = quillRef.current?.getEditor?.() || quillRef.current?.editor;
+            if (quillEditor) {
+                console.log('Quill editor instance found, attaching paste listener');
+                editorRoot = quillEditor.root;
+                editorRoot.removeEventListener('paste', handlePaste); // Remove existing to avoid duplicates
+                editorRoot.addEventListener('paste', handlePaste);
+
+                if (attachInterval) clearInterval(attachInterval);
+            } else {
+                console.log('Waiting for Quill editor instance...');
+            }
+        };
+
+        // Try to attach immediately
+        attachListener();
+
+        // Retry every 500ms if not found (max 5 seconds)
+        let attempts = 0;
+        attachInterval = setInterval(() => {
+            attempts++;
+            if (attempts > 10) clearInterval(attachInterval);
+            attachListener();
+        }, 500);
+
+        return () => {
+            if (attachInterval) clearInterval(attachInterval);
+            if (editorRoot) {
+                editorRoot.removeEventListener('paste', handlePaste);
+                console.log('Paste listener removed');
+            }
+        };
+    }, [handlePasteImage, activeContentPage]);
+
+    // ==================== ATTACHMENT FILE HANDLERS ====================
+    const handleAttachmentFileSelect = useCallback(() => {
+        if (fileInputRef.current) {
+            fileInputRef.current.click();
+        }
+    }, []);
+
+    const handleAttachmentFilesSelected = useCallback((e) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+
+        // Validate file types
+        const allowedTypes = [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'image/png', 'image/jpeg', 'image/gif'
+        ];
+
+        const validFiles = files.filter(file => {
+            if (!allowedTypes.includes(file.type)) {
+                console.warn(`File type not allowed: ${file.type}`);
+                return false;
+            }
+            // Max 10MB per file
+            if (file.size > 10 * 1024 * 1024) {
+                console.warn(`File too large: ${file.name}`);
+                return false;
+            }
+            return true;
+        });
+
+        if (validFiles.length < files.length) {
+            alert('Some files were skipped. Allowed types: PDF, Word, Excel, Images. Max size: 10MB.');
+        }
+
+        setPendingAttachments(prev => [...prev, ...validFiles]);
+        e.target.value = ''; // Reset input
+    }, []);
+
+    const removePendingAttachment = useCallback((index) => {
+        setPendingAttachments(prev => prev.filter((_, i) => i !== index));
+    }, []);
+
+    const removeUploadedAttachment = useCallback(async (attachmentId) => {
+        if (!window.confirm('Remove this attachment?')) return;
+
+        const articleId = uploadedArticleId || (isEditMode ? parseInt(id, 10) : null);
+        if (!articleId) return;
+
+        try {
+            const result = await api.deleteArticleAttachment(token, articleId, attachmentId);
+            if (result.success) {
+                setUploadedAttachments(prev => prev.filter(a => a.id !== attachmentId));
+            } else {
+                alert('Failed to remove attachment: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error removing attachment:', error);
+            alert('Failed to remove attachment');
+        }
+    }, [token, uploadedArticleId, isEditMode, id]);
+
+    // ==================== VALIDATION ====================
     const validateForm = () => {
         const newErrors = {};
 
@@ -342,7 +617,7 @@ function CreateArticlePage() {
         return true;
     };
 
-    // Submit handler
+    // Submit handler with two-phase creation: create article first, then upload attachments
     const handleSubmit = async (e) => {
         e.preventDefault();
 
@@ -362,38 +637,53 @@ function CreateArticlePage() {
                 AudienceTypes: formData.audienceTypes.length > 0 ? formData.audienceTypes.map(id => parseInt(id, 10)) : null,
                 Tags: formData.tags.length > 0 ? formData.tags : ['general'],
                 Visibility: formData.visibility,
-                AttachmentUrls: formData.attachments.filter(url => url.trim() !== ''),
                 PollOptions: formData.pollOptions.filter(opt => opt.trim() !== ''),
             };
 
             console.log('Submitting article data:', articleData);
-            console.log('Submitting article data:', articleData);
 
             let result;
+            let articleId;
+
             if (isEditMode) {
                 result = await api.updateArticle(token, id, userId, articleData);
+                articleId = parseInt(id, 10);
             } else {
                 result = await api.createArticle(token, userId, articleData);
+                articleId = result.id || result.articleId;
             }
 
-            if (result.success) {
+            if (!result.success) {
                 setFormState(prev => ({
                     ...prev,
                     loading: false,
-                    successMessage: isEditMode ? 'Article updated successfully!' : 'Article created successfully!',
+                    errors: { submit: result.error || 'Failed to save article' }
                 }));
-
-                setTimeout(() => {
-                    navigate('/articles');
-                }, 1500);
-
-            } else {
-                setFormState(prev => ({
-                    ...prev,
-                    loading: false,
-                    errors: { submit: result.error || 'Failed to create article' }
-                }));
+                return;
             }
+
+            // Phase 2: Upload pending attachments
+            if (pendingAttachments.length > 0 && articleId) {
+                setUploadingAttachment(true);
+                for (const file of pendingAttachments) {
+                    const uploadResult = await api.uploadArticleAttachment(token, articleId, file);
+                    if (!uploadResult.success) {
+                        console.error('Failed to upload attachment:', file.name, uploadResult.error);
+                    }
+                }
+                setUploadingAttachment(false);
+            }
+
+            setFormState(prev => ({
+                ...prev,
+                loading: false,
+                successMessage: isEditMode ? 'Article updated successfully!' : 'Article created successfully!',
+            }));
+
+            setTimeout(() => {
+                navigate('/articles');
+            }, 1500);
+
         } catch (error) {
             console.error('Submission error:', error);
             setFormState(prev => ({
@@ -596,45 +886,7 @@ function CreateArticlePage() {
                                 </div>
 
                                 {/* Attachments (Post Only) */}
-                                {articleTypeParam === 'post' && (
-                                    <div className="mb-4">
-                                        <label className="form-label fw-bold">Image URLs</label>
-                                        {formData.attachments.map((url, idx) => (
-                                            <div key={idx} className="input-group mb-2">
-                                                <input
-                                                    type="text"
-                                                    className="form-control"
-                                                    value={url}
-                                                    onChange={(e) => {
-                                                        const newAttachments = [...formData.attachments];
-                                                        newAttachments[idx] = e.target.value;
-                                                        setFormData(prev => ({ ...prev, attachments: newAttachments }));
-                                                    }}
-                                                    placeholder="https://example.com/image.jpg"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    className="btn btn-outline-danger"
-                                                    onClick={() => {
-                                                        const newAttachments = formData.attachments.filter((_, i) => i !== idx);
-                                                        setFormData(prev => ({ ...prev, attachments: newAttachments }));
-                                                    }}
-                                                >
-                                                    <i className="bi bi-x"></i>
-                                                </button>
-                                            </div>
-                                        ))}
-                                        {formData.attachments.length < 3 && (
-                                            <button
-                                                type="button"
-                                                className="btn btn-sm btn-outline-primary"
-                                                onClick={() => setFormData(prev => ({ ...prev, attachments: [...prev.attachments, ''] }))}
-                                            >
-                                                + Add Image URL
-                                            </button>
-                                        )}
-                                    </div>
-                                )}
+
                                 {/* Poll Options (Poll Only) */}
                                 {articleTypeParam === 'poll' && (
                                     <div className="mb-4">
@@ -720,17 +972,119 @@ function CreateArticlePage() {
                                     <div className={`quill-wrapper ${errors.content ? 'is-invalid border border-danger rounded' : ''}`} style={{ background: '#fff' }}>
                                         <ReactQuill
                                             key={activeContentPage}
+                                            ref={quillRef}
                                             theme="snow"
                                             value={formData.pages[activeContentPage] || ''}
                                             onChange={(value) => handlePageChange(activeContentPage, value)}
                                             placeholder="Write your content here..."
+                                            modules={{
+                                                toolbar: {
+                                                    container: [
+                                                        [{ 'header': [1, 2, 3, false] }],
+                                                        ['bold', 'italic', 'underline', 'strike'],
+                                                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                                                        ['link', 'image'],
+                                                        ['clean']
+                                                    ],
+                                                    handlers: {
+                                                        image: handleImageUpload
+                                                    }
+                                                }
+                                            }}
                                             style={{ height: '300px', marginBottom: '50px' }}
                                         />
                                     </div>
-                                    {errors.content && <div className="invalid-feedback d-block">{errors.content}</div>}
-                                    <div className="form-text text-end">
-                                        Words: {(formData.pages[activeContentPage] || '').replace(/<[^>]*>/g, '').trim().split(/\s+/).filter(w => w.length > 0).length}
+                                    {/* Hidden inputs for file selection */}
+                                    <input
+                                        type="file"
+                                        ref={imageInputRef}
+                                        style={{ display: 'none' }}
+                                        accept="image/png, image/jpeg, image/gif"
+                                        onChange={handleImageFileSelected}
+                                    />
+                                    <input
+                                        type="file"
+                                        ref={fileInputRef}
+                                        style={{ display: 'none' }}
+                                        multiple
+                                        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif"
+                                        onChange={handleAttachmentFilesSelected}
+                                    />
+                                    {uploadingImage && <div className="text-secondary small mt-1"><span className="spinner-border spinner-border-sm me-1"></span>Uploading image...</div>}
+                                </div>
+                                {errors.content && <div className="invalid-feedback d-block">{errors.content}</div>}
+                                <div className="form-text text-end">
+                                    Words: {(formData.pages[activeContentPage] || '').replace(/<[^>]*>/g, '').trim().split(/\s+/).filter(w => w.length > 0).length}
+                                </div>
+
+
+                                {/* ATTACHMENTS SECTION */}
+                                <div className="mb-4 p-3 bg-light rounded border">
+                                    <div className="d-flex justify-content-between align-items-center mb-3">
+                                        <label className="form-label fw-bold mb-0">
+                                            <i className="bi bi-paperclip me-2"></i> Attachments
+                                        </label>
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline-primary"
+                                            onClick={handleAttachmentFileSelect}
+                                            disabled={uploadingAttachment}
+                                        >
+                                            <i className="bi bi-plus-lg me-1"></i> Add Files
+                                        </button>
                                     </div>
+
+                                    {(pendingAttachments.length > 0 || uploadedAttachments.length > 0) ? (
+                                        <div className="list-group">
+                                            {/* Existing Uploaded Attachments */}
+                                            {uploadedAttachments.map((att) => (
+                                                <div key={att.id} className="list-group-item d-flex justify-content-between align-items-center">
+                                                    <div className="d-flex align-items-center text-truncate">
+                                                        <i className={`bi ${getFileIcon(att.fileName)} fs-4 me-3`}></i>
+                                                        <div>
+                                                            <div className="fw-medium text-truncate" style={{ maxWidth: '300px' }}>{att.fileName}</div>
+                                                            <div className="text-muted small">{formatFileSize(att.fileSize)}</div>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-sm btn-outline-danger border-0"
+                                                        onClick={() => removeUploadedAttachment(att.id)}
+                                                        title="Remove attachment"
+                                                    >
+                                                        <i className="bi bi-trash"></i>
+                                                    </button>
+                                                </div>
+                                            ))}
+
+                                            {/* Pending Attachments */}
+                                            {pendingAttachments.map((file, idx) => (
+                                                <div key={`pending-${idx}`} className="list-group-item d-flex justify-content-between align-items-center bg-light-subtle">
+                                                    <div className="d-flex align-items-center text-truncate">
+                                                        <i className={`bi ${getFileIcon(file.name)} fs-4 me-3`}></i>
+                                                        <div>
+                                                            <div className="fw-medium text-truncate" style={{ maxWidth: '300px' }}>{file.name} <span className="badge bg-warning text-dark ms-2">Pending</span></div>
+                                                            <div className="text-muted small">{formatFileSize(file.size)}</div>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-sm btn-outline-danger border-0"
+                                                        onClick={() => removePendingAttachment(idx)}
+                                                        title="Remove file"
+                                                    >
+                                                        <i className="bi bi-x-lg"></i>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center text-muted py-3 border border-dashed rounded bg-white" onClick={handleAttachmentFileSelect} style={{ cursor: 'pointer' }}>
+                                            <i className="bi bi-cloud-upload fs-3 d-block mb-1"></i>
+                                            <small>Click to upload documents or images</small>
+                                        </div>
+                                    )}
+                                    {uploadingAttachment && <div className="mt-2 text-primary small"><span className="spinner-border spinner-border-sm me-2"></span>Uploading attachments...</div>}
                                 </div>
 
                                 <div className="d-flex justify-content-between mt-4">

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
+import AttachmentsSection from './AttachmentsSection';
 import 'react-quill-new/dist/quill.snow.css';
 
 function ArticleDetail() {
@@ -27,6 +28,7 @@ function ArticleDetail() {
   });
 
   const [activePage, setActivePage] = useState(0);
+  const [attachments, setAttachments] = useState([]);
 
   // ========== FETCH ARTICLE ON MOUNT ==========
   useEffect(() => {
@@ -75,6 +77,15 @@ function ArticleDetail() {
         likeCount: article.likeCount || article.LikeCount || article.article?.likeCount || article.article?.LikeCount || 0,
         loading: false,
       }));
+
+      // Fetch attachments separately using the dedicated API
+      const fetchedAttachments = await api.getArticleAttachments(token, id);
+      setAttachments(fetchedAttachments.map(att => ({
+        id: att.id || att.Id,
+        fileName: att.fileName || att.FileName,
+        fileSize: att.fileSize || att.FileSize || 0,
+        downloadUrl: att.downloadUrl || att.DownloadUrl || api.getAttachmentDownloadUrl(att.id || att.Id),
+      })));
     } catch (error) {
       console.error('Error fetching article:', error);
       setPageState(prev => ({
@@ -310,223 +321,102 @@ function ArticleDetail() {
 
   // ========== RENDER MAIN CONTENT ==========
   return (
-    <div className="container-lg my-4" style={{ maxWidth: '900px' }}>
-      {/* Back Button */}
+    <div className="blog-container">
+      {/* Back Link */}
       <button
-        className="btn btn-outline-primary mb-4"
+        className="btn btn-link text-decoration-none p-0 mb-4 text-muted"
         onClick={() => navigate('/articles')}
-        style={{ borderRadius: '6px' }}
       >
         <i className="bi bi-arrow-left me-2"></i>Back to Articles
       </button>
 
       {/* Error Alert */}
       {error && (
-        <div
-          className="alert alert-danger alert-dismissible fade show border-0 mb-4"
-          style={{ background: '#f8d7da', borderLeft: '4px solid #dc3545' }}
-        >
+        <div className="alert alert-danger border-0 mb-4">
           <div className="d-flex align-items-center gap-2">
-            <i className="bi bi-exclamation-circle" style={{ color: '#dc3545' }}></i>
+            <i className="bi bi-exclamation-circle"></i>
             <span>{error}</span>
           </div>
           <button
             type="button"
-            className="btn-close"
+            className="btn-close ms-auto"
             onClick={() => setPageState(prev => ({ ...prev, error: null }))}
           ></button>
         </div>
       )}
 
-      {/* Article Header */}
-      <article className="card shadow-sm border-0 mb-4" style={{ borderRadius: '8px' }}>
-        <div className="card-body p-5">
-          {/* Category Badge and Title */}
-          <div className="mb-4 d-flex align-items-start justify-content-between gap-3">
-            <div className="flex-grow-1">
-              <h1
-                className="mb-2"
-                style={{
-                  fontSize: '2.5rem',
-                  fontWeight: '700',
-                  color: '#2c3e50',
-                  lineHeight: '1.2',
-                }}
-              >
-                {getTitle()}
-              </h1>
-              <p className="text-muted lead mb-0" style={{ fontSize: '1.1rem' }}>
-                {getDescription()}
-              </p>
-            </div>
-            <span
-              className="badge"
-              style={{
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                fontSize: '0.85rem',
-                padding: '0.75rem 1rem',
-                borderRadius: '20px',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {getCategory()}
-            </span>
-          </div>
+      {/* Blog Wrapper */}
+      <article className="fade-in">
+        {/* Header */}
+        <header className="blog-header">
+          <span className="blog-category-pill">
+            {getCategory()}
+          </span>
 
-          {/* Article Meta Information */}
-          <div
-            className="d-flex flex-wrap gap-3 mb-4 pb-4 border-bottom"
-            style={{ color: '#6c757d', fontSize: '0.95rem' }}
-          >
-            <span className="d-flex align-items-center gap-2">
-              <i className="bi bi-person-circle" style={{ fontSize: '1.1rem' }}></i>
-              <div>
-                <strong>{getCreatorName()}</strong>
-                {getCreatorEmail() && <small className="d-block text-muted">{getCreatorEmail()}</small>}
+          <h1 className="blog-title">
+            {getTitle()}
+          </h1>
+
+          <div className="blog-meta-row">
+            <div className="blog-author-info">
+              <div className="blog-author-avatar-placeholder">
+                <i className="bi bi-person-fill"></i>
               </div>
-            </span>
-            <span className="d-flex align-items-center gap-2">
-              <i className="bi bi-calendar-event" style={{ fontSize: '1.1rem' }}></i>
-              {getCreatedDate()}
-            </span>
-            <span className="d-flex align-items-center gap-2">
-              <i className="bi bi-eye" style={{ fontSize: '1.1rem' }}></i>
-              {getViewCount()} views
-            </span>
-            <span className="d-flex align-items-center gap-2">
-              <i className="bi bi-chat" style={{ fontSize: '1.1rem' }}></i>
-              {comments.length} comments
-            </span>
-          </div>
-
-          {/* Article Type, Intent, Audience */}
-          {(getArticleType() || getIntentType() || getAudienceType()) && (
-            <div className="mb-4 p-3 bg-light" style={{ borderRadius: '6px' }}>
-              <div className="row g-3 small">
-                {getArticleType() && (
-                  <div className="col-md-4">
-                    <strong style={{ color: '#667eea' }}>Article Type</strong>
-                    <p className="text-muted mb-0">{getArticleType()}</p>
-                  </div>
-                )}
-                {getIntentType() && (
-                  <div className="col-md-4">
-                    <strong style={{ color: '#667eea' }}>Intent</strong>
-                    <p className="text-muted mb-0">{getIntentType()}</p>
-                  </div>
-                )}
-                {getAudienceType() && (
-                  <div className="col-md-4">
-                    <strong style={{ color: '#667eea' }}>Audience</strong>
-                    <p className="text-muted mb-0">{getAudienceType()}</p>
-                  </div>
-                )}
+              <div className="d-flex flex-column" style={{ lineHeight: 1.2 }}>
+                <strong style={{ color: '#333' }}>{getCreatorName()}</strong>
+                {getCreatorEmail() && <small style={{ fontSize: '0.85em' }}>{getCreatorEmail()}</small>}
               </div>
             </div>
-          )}
 
-          {/* Article Actions */}
-          <div className="d-flex gap-2 mb-4 flex-wrap">
-            <button
-              className={`btn btn-sm ${liked ? 'btn-danger' : 'btn-outline-danger'}`}
-              onClick={handleLike}
-              style={{ borderRadius: '6px' }}
-            >
-              <i className={`bi ${liked ? 'bi-heart-fill' : 'bi-heart'} me-1`}></i>
-              {likeCount}
-            </button>
-            <button
-              className="btn btn-sm btn-outline-secondary"
-              onClick={() => setPageState(prev => ({ ...prev, showComments: !prev.showComments }))}
-              style={{ borderRadius: '6px' }}
-            >
-              <i className="bi bi-chat me-1"></i>
-              {pageState.showComments ? 'Hide' : 'Show'} Comments
-            </button>
-            <button
-              className="btn btn-sm btn-outline-secondary ms-auto"
-              style={{ borderRadius: '6px' }}
-            >
-              <i className="bi bi-share me-1"></i>Share
-            </button>
-          </div>
-
-          {/* Tags */}
-          {getTags() && (
-            <div className="mb-4">
-              <small className="text-muted d-block mb-2">
-                <i className="bi bi-tags me-1"></i>Tags:
-              </small>
-              <div className="d-flex flex-wrap gap-2">
-                {getTags()
-                  .split(',')
-                  .map((tag, idx) => (
-                    <span
-                      key={idx}
-                      className="badge"
-                      style={{
-                        background: '#f0f4ff',
-                        color: '#667eea',
-                        borderRadius: '20px',
-                        fontSize: '0.85rem',
-                      }}
-                    >
-                      {tag.trim()}
-                    </span>
-                  ))}
-              </div>
+            <div className="ms-auto d-flex gap-3 align-items-center">
+              <span>
+                <i className="bi bi-calendar3 me-1"></i> {getCreatedDate()}
+              </span>
+              <span>
+                <i className="bi bi-eye me-1"></i> {getViewCount()}
+              </span>
             </div>
-          )}
-        </div>
-      </article>
+          </div>
+        </header>
 
-
-
-      {/* Article Content */}
-      <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '8px' }}>
-        <div className="card-body p-5">
-          {/* Pagination Controls (Top) */}
+        {/* Content */}
+        <div className="blog-content">
+          {/* Pagination Top */}
           {getContent().split('<!-- PAGE_BREAK -->').length > 1 && (
-            <div className="d-flex justify-content-between mb-4 align-items-center">
+            <div className="d-flex justify-content-between mb-4 align-items-center bg-light p-2 rounded">
               <button
-                className="btn btn-outline-secondary btn-sm"
+                className="btn btn-sm btn-outline-secondary border-0"
                 disabled={activePage === 0}
                 onClick={() => setActivePage(prev => Math.max(0, prev - 1))}
               >
-                <i className="bi bi-arrow-left me-1"></i> Prev Page
+                <i className="bi bi-arrow-left me-1"></i> Previous
               </button>
               <span className="text-muted small fw-bold">
-                Page {activePage + 1} of {getContent().split('<!-- PAGE_BREAK -->').length}
+                Part {activePage + 1} of {getContent().split('<!-- PAGE_BREAK -->').length}
               </span>
               <button
-                className="btn btn-outline-secondary btn-sm"
+                className="btn btn-sm btn-outline-secondary border-0"
                 disabled={activePage >= getContent().split('<!-- PAGE_BREAK -->').length - 1}
                 onClick={() => setActivePage(prev => Math.min(getContent().split('<!-- PAGE_BREAK -->').length - 1, prev + 1))}
               >
-                Next Page <i className="bi bi-arrow-right ms-1"></i>
+                Next <i className="bi bi-arrow-right ms-1"></i>
               </button>
             </div>
           )}
 
           <div
-            className="article-content"
-            style={{
-              fontSize: '1.05rem',
-              lineHeight: '1.8',
-              color: '#333',
-              wordWrap: 'break-word',
-            }}
             dangerouslySetInnerHTML={{ __html: getContent().split('<!-- PAGE_BREAK -->')[activePage] }}
           />
 
-          {/* Pagination Controls (Bottom) */}
+          {/* Pagination Bottom */}
           {getContent().split('<!-- PAGE_BREAK -->').length > 1 && (
-            <div className="d-flex justify-content-center mt-4 pt-3 border-top">
+            <div className="d-flex justify-content-center mt-5">
               {getContent().split('<!-- PAGE_BREAK -->').map((_, idx) => (
                 <button
                   key={idx}
-                  className={`btn btn-sm mx-1 ${activePage === idx ? 'btn-primary' : 'btn-outline-secondary'}`}
+                  className={`btn btn-sm mx-1 ${activePage === idx ? 'btn-dark' : 'btn-light'}`}
                   onClick={() => setActivePage(idx)}
+                  style={{ width: '32px', height: '32px', padding: 0, borderRadius: '50%' }}
                 >
                   {idx + 1}
                 </button>
@@ -534,129 +424,146 @@ function ArticleDetail() {
             </div>
           )}
         </div>
-      </div>
+
+        {/* Footer Area */}
+        <footer className="blog-footer">
+          {/* Tags */}
+          {getTags() && (
+            <div className="mb-4 d-flex flex-wrap gap-2">
+              {getTags().split(',').map((tag, idx) => (
+                <span key={idx} className="badge bg-light text-secondary border p-2 fw-normal">
+                  #{tag.trim()}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="d-flex align-items-center justify-content-between mt-4 mb-5">
+            <div className="d-flex gap-3">
+              <button
+                className={`btn ${liked ? 'btn-danger' : 'btn-outline-danger'} rounded-pill px-4`}
+                onClick={handleLike}
+              >
+                <i className={`bi ${liked ? 'bi-heart-fill' : 'bi-heart'} me-2`}></i>
+                {liked ? 'Liked' : 'Like'} ({likeCount})
+              </button>
+              <button className="btn btn-outline-secondary rounded-pill px-4">
+                <i className="bi bi-share me-2"></i> Share
+              </button>
+            </div>
+          </div>
+
+          {/* Attachments */}
+          <div className="mb-5">
+            <AttachmentsSection attachments={attachments} />
+          </div>
+
+          {/* Technical Specs Box */}
+          {(getArticleType() || getIntentType() || getAudienceType()) && (
+            <div className="blog-tech-specs">
+              <h5 className="mb-3 fw-bold text-uppercase small text-muted">About this Article</h5>
+              <div className="row g-4">
+                {getArticleType() && (
+                  <div className="col-sm-4">
+                    <div className="d-block text-muted small text-uppercase fw-bold mb-1">Type</div>
+                    <div>{getArticleType()}</div>
+                  </div>
+                )}
+                {getIntentType() && (
+                  <div className="col-sm-4">
+                    <div className="d-block text-muted small text-uppercase fw-bold mb-1">Intent</div>
+                    <div>{getIntentType()}</div>
+                  </div>
+                )}
+                {getAudienceType() && (
+                  <div className="col-sm-4">
+                    <div className="d-block text-muted small text-uppercase fw-bold mb-1">Audience</div>
+                    <div>{getAudienceType()}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+        </footer>
+      </article>
 
       {/* Comments Section */}
-      {pageState.showComments && (
-        <div className="card shadow-sm border-0" style={{ borderRadius: '8px' }}>
-          <div className="card-body p-5">
-            <h4 className="mb-4 fw-600" style={{ color: '#2c3e50' }}>
-              <i className="bi bi-chat-dots me-2" style={{ color: '#667eea' }}></i>
-              Comments ({comments.length})
-            </h4>
+      <div className="mt-5 pt-4 border-top">
+        <div className="d-flex align-items-center justify-content-between mb-4">
+          <h3 className="fw-bold m-0">Comments ({comments.length})</h3>
+          <button
+            className="btn btn-link text-decoration-none"
+            onClick={() => setPageState(prev => ({ ...prev, showComments: !prev.showComments }))}
+          >
+            {pageState.showComments ? 'Hide Comments' : 'Show Comments'}
+          </button>
+        </div>
 
-            {/* Add Comment Form */}
+        {pageState.showComments && (
+          <div className="animate__animated animate__fadeIn">
             {userId ? (
-              <form onSubmit={handleAddComment} className="mb-4">
-                <div className="mb-3">
-                  <textarea
-                    className="form-control"
-                    placeholder="Share your thoughts..."
-                    value={newComment}
-                    onChange={(e) => setPageState(prev => ({ ...prev, newComment: e.target.value }))}
-                    disabled={submittingComment}
-                    rows="3"
-                    maxLength="500"
-                    style={{ borderRadius: '6px' }}
-                  />
-                  <small className="text-muted d-block mt-2">
-                    {newComment.length}/500 characters
-                  </small>
-                </div>
+              <form onSubmit={handleAddComment} className="mb-5">
+                <textarea
+                  className="form-control mb-3"
+                  placeholder="Join the discussion..."
+                  value={newComment}
+                  onChange={(e) => setPageState(prev => ({ ...prev, newComment: e.target.value }))}
+                  disabled={submittingComment}
+                  rows="3"
+                />
                 <button
                   type="submit"
-                  className="btn btn-primary btn-sm"
+                  className="btn btn-primary rounded-pill px-4"
                   disabled={submittingComment || !newComment.trim()}
-                  style={{
-                    borderRadius: '6px',
-                    background: submittingComment
-                      ? '#ccc'
-                      : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    border: 'none',
-                  }}
                 >
-                  {submittingComment ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                      Posting...
-                    </>
-                  ) : (
-                    <>
-                      <i className="bi bi-send me-1"></i>
-                      Post Comment
-                    </>
-                  )}
+                  {submittingComment ? 'Posting...' : 'Post Comment'}
                 </button>
               </form>
             ) : (
-              <div
-                className="alert alert-info border-0 mb-4"
-                style={{ background: '#d1ecf1', borderLeft: '4px solid #17a2b8' }}
-              >
-                <i className="bi bi-info-circle me-2" style={{ color: '#17a2b8' }}></i>
-                <a href="/login" className="alert-link">
-                  Log in
-                </a>
-                {' '}to comment on this article
+              <div className="alert alert-light border mb-4">
+                Please <a href="/login">log in</a> to join the discussion.
               </div>
             )}
 
-            {/* Comments List */}
-            {comments.length > 0 ? (
-              <div className="comments-list">
-                {comments.map((comment) => (
-                  <div
-                    key={comment.id}
-                    className="card card-sm mb-3 border-0"
-                    style={{
-                      background: '#f8f9fa',
-                      borderRadius: '6px',
-                      borderLeft: '3px solid #667eea',
-                    }}
-                  >
-                    <div className="card-body p-3">
-                      <div className="d-flex justify-content-between align-items-start">
-                        <div className="flex-grow-1">
-                          <div className="d-flex align-items-center gap-2 mb-2">
-                            <strong style={{ color: '#2c3e50' }}>
-                              {comment.creator?.name || comment.Creator?.Name || 'Anonymous'}
-                            </strong>
-                            <small className="text-muted">
-                              {formatCommentDate(comment.createdDate || comment.CreatedDate)}
-                            </small>
-                          </div>
-                          <p className="small mb-0" style={{ color: '#555', lineHeight: '1.5' }}>
-                            {comment.content || comment.Content}
-                          </p>
-                        </div>
+            <div className="comments-list">
+              {comments.length > 0 ? (
+                comments.map((comment) => (
+                  <div key={comment.id} className="d-flex gap-3 mb-4">
+                    <div
+                      className="flex-shrink-0 d-flex align-items-center justify-content-center rounded-circle bg-light text-secondary"
+                      style={{ width: '40px', height: '40px', fontSize: '1.2rem' }}
+                    >
+                      <i className="bi bi-person"></i>
+                    </div>
+                    <div className="flex-grow-1">
+                      <div className="d-flex align-items-center mb-1">
+                        <span className="fw-bold me-2">{comment.creator?.name || comment.Creator?.Name || 'Anonymous'}</span>
+                        <small className="text-muted">{formatCommentDate(comment.createdDate || comment.CreatedDate)}</small>
                         {userId && parseInt(userId) === (comment.creator?.id || comment.Creator?.Id) && (
                           <button
-                            className="btn btn-link btn-sm text-danger p-0 ms-2"
+                            className="btn btn-link btn-sm text-danger p-0 ms-auto"
                             onClick={() => handleDeleteComment(comment.id || comment.Id)}
-                            title="Delete comment"
-                            style={{ textDecoration: 'none' }}
                           >
                             <i className="bi bi-trash"></i>
                           </button>
                         )}
                       </div>
+                      <div className="text-dark">
+                        {comment.content || comment.Content}
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div
-                className="alert alert-info border-0"
-                style={{ background: '#d1ecf1', borderLeft: '4px solid #17a2b8' }}
-              >
-                <i className="bi bi-chat-left-text me-2" style={{ color: '#17a2b8' }}></i>
-                No comments yet. Be the first to comment!
-              </div>
-            )}
+                ))
+              ) : (
+                <p className="text-muted fst-italic">No comments yet.</p>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </div >
   );
 }
 

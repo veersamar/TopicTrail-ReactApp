@@ -1,9 +1,83 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
-import ReactQuill from 'react-quill-new';
+import { useNavigate, useSearchParams, useParams, useOutletContext } from 'react-router-dom';
+import ReactQuill, { Quill } from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
+import ImageResize from '@looop/quill-image-resize-module-react';
+
+// Register the image resize module
+Quill.register('modules/imageResize', ImageResize);
+
+// Define Custom File Blot
+const BlockEmbed = Quill.import('blots/block/embed');
+
+class FileBlot extends BlockEmbed {
+    static create(value) {
+        const node = super.create();
+        node.setAttribute('contenteditable', 'false');
+        node.setAttribute('data-url', value.url);
+        node.setAttribute('data-name', value.name);
+        node.setAttribute('data-size', value.size);
+        node.setAttribute('data-type', value.type);
+
+        const card = document.createElement('div');
+        card.className = 'file-card d-inline-flex align-items-center p-2 border rounded bg-light my-2';
+        card.style.maxWidth = '100%';
+        card.style.cursor = 'pointer';
+
+        // Icon
+        const icon = document.createElement('i');
+        const iconClass = getFileIcon(value.name); // Reuse existing helper
+        icon.className = `bi ${iconClass} fs-4 me-3`;
+
+        // Info
+        const info = document.createElement('div');
+        info.className = 'flex-grow-1 overflow-hidden';
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'fw-bold text-truncate';
+        nameEl.innerText = value.name;
+
+        const sizeEl = document.createElement('div');
+        sizeEl.className = 'text-muted small';
+        sizeEl.innerText = formatFileSize(value.size || 0);
+
+        info.appendChild(nameEl);
+        info.appendChild(sizeEl);
+
+        // Download Action
+        const action = document.createElement('i');
+        action.className = 'bi bi-download ms-3 text-primary';
+
+        card.appendChild(icon);
+        card.appendChild(info);
+        card.appendChild(action);
+
+        // Click handler to download
+        card.onclick = (e) => {
+            e.preventDefault();
+            window.open(value.url, '_blank');
+        };
+
+        node.appendChild(card);
+        return node;
+    }
+
+    static value(node) {
+        return {
+            url: node.getAttribute('data-url'),
+            name: node.getAttribute('data-name'),
+            size: parseInt(node.getAttribute('data-size')),
+            type: node.getAttribute('data-type')
+        };
+    }
+}
+FileBlot.blotName = 'file-card';
+FileBlot.tagName = 'div';
+FileBlot.className = 'ql-file-card-embed';
+
+Quill.register(FileBlot);
 
 // Helper to format file size
 const formatFileSize = (bytes) => {
@@ -40,10 +114,23 @@ function CreateArticlePage() {
     // In edit mode, type is derived from the article, but initially fallback to param or post
     const [articleTypeParam, setArticleTypeParam] = useState(searchParams.get('type') || 'post');
 
+    // Focus Mode Context
+    const { setIsFocusMode, isFocusMode } = useOutletContext() || {};
+
+    // Enable Focus Mode on mount to hide right sidebar, cleanup on unmount
+    useEffect(() => {
+        if (setIsFocusMode) setIsFocusMode(true);
+        return () => {
+            if (setIsFocusMode) setIsFocusMode(false);
+        };
+    }, [setIsFocusMode]);
+
     const tagInputRef = useRef(null);
     const quillRef = useRef(null);
     const fileInputRef = useRef(null);
     const imageInputRef = useRef(null);
+    const inlineFileInputRef = useRef(null);
+    const articleFetchedRef = useRef(false); // Track if article has been fetched to prevent re-fetching
 
     // Type configuration
     const typeConfig = {
@@ -56,7 +143,8 @@ function CreateArticlePage() {
 
     const [formState, setFormState] = useState({
         loading: false,
-        dataLoading: true,
+        masterDataLoading: true,
+        articleDataLoading: false,
         errors: {},
         successMessage: '',
         articleTypes: [],
@@ -76,11 +164,15 @@ function CreateArticlePage() {
     const [uploadingAttachment, setUploadingAttachment] = useState(false);
     const [uploadedArticleId, setUploadedArticleId] = useState(null); // For tracking article ID after creation
     const [uploadedMedia, setUploadedMedia] = useState([]); // Inline images already uploaded (edit mode)
+    const [isDraggingAttachment, setIsDraggingAttachment] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [lastSaved, setLastSaved] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     const [formData, setFormData] = useState({
         title: '',
         description: '',
-        pages: [''], // Changed from content to pages array
+        pages: [{ title: 'Page 1', content: '' }], // Changed from strings to objects
         categoryId: '',
         subCategoryId: '',
         articleType: '',
@@ -101,12 +193,21 @@ function CreateArticlePage() {
         fetchMasterData();
     }, []);
 
+    // Set articleDataLoading to true initially for edit mode and reset fetch flag when id changes
+    useEffect(() => {
+        if (isEditMode) {
+            setFormState(prev => ({ ...prev, articleDataLoading: true }));
+            articleFetchedRef.current = false; // Reset when article id changes
+        }
+    }, [isEditMode, id]);
+
     // Fetch Article Data in Edit Mode
     useEffect(() => {
-        if (isEditMode && token && userId) {
+        if (isEditMode && token && userId && !articleFetchedRef.current) {
             const fetchArticleDetails = async () => {
                 try {
-                    setFormState(prev => ({ ...prev, dataLoading: true, errors: {} }));
+                    articleFetchedRef.current = true; // Mark as fetched immediately
+                    setFormState(prev => ({ ...prev, articleDataLoading: true, errors: {} }));
                     const articleResponse = await api.getArticleById(token, id);
                     console.log("Edit Article Response:", articleResponse);
 
@@ -129,12 +230,34 @@ function CreateArticlePage() {
                     const typeId = article.ArticleType || article.articleType || article.ArticleTypeId || article.articleTypeId || (article.type && (article.type.id || article.type.Id));
 
                     const content = article.Content || article.content || '';
-                    const pages = content.split('<!-- PAGE_BREAK -->');
+
+                    // Parse Metadata for Page Titles
+                    let titles = [];
+                    let cleanContent = content;
+                    // Use a more robust regex that handles the metadata at the end
+                    const metaMatch = content.match(/<!-- METADATA: (\{[^}]+\}) -->$/);
+                    if (metaMatch) {
+                        try {
+                            const meta = JSON.parse(metaMatch[1]);
+                            titles = meta.pageTitles || [];
+                            cleanContent = content.replace(metaMatch[0], '').trim();
+                        } catch (e) {
+                            console.warn("Failed to parse metadata", e);
+                        }
+                    }
+
+                    const rawPages = cleanContent.split('<!-- PAGE_BREAK -->');
+                    const pages = rawPages.map((p, idx) => ({
+                        title: titles[idx] || `Page ${idx + 1}`,
+                        content: p
+                    }));
+
+                    if (pages.length === 0) pages.push({ title: 'Page 1', content: '' });
 
                     setFormData({
                         title: article.Title || article.title || '',
                         description: article.Description || article.description || '',
-                        pages: pages.length > 0 ? pages : [''],
+                        pages: pages,
                         categoryId: article.CategoryId || article.categoryId || '',
                         subCategoryId: article.SubCategoryId || article.subCategoryId || '',
                         articleType: typeId,
@@ -155,7 +278,7 @@ function CreateArticlePage() {
 
                     // Load existing attachments for edit mode using dedicated API
                     const fetchedAttachments = await api.getArticleAttachments(token, id);
-                    setUploadedAttachments(fetchedAttachments.map(att => ({
+                    setUploadedAttachments((fetchedAttachments || []).map(att => ({
                         id: att.id || att.Id,
                         fileName: att.fileName || att.FileName || att.name || 'Unknown',
                         fileSize: att.fileSize || att.FileSize || 0,
@@ -164,7 +287,7 @@ function CreateArticlePage() {
 
                     // Load existing inline media for edit mode (for management purposes)
                     const fetchedMedia = await api.getArticleMedia(token, id);
-                    setUploadedMedia(fetchedMedia.map(m => ({
+                    setUploadedMedia((fetchedMedia || []).map(m => ({
                         id: m.id || m.Id,
                         fileName: m.fileName || m.FileName,
                         url: m.url || m.Url,
@@ -172,11 +295,11 @@ function CreateArticlePage() {
 
                     setUploadedArticleId(parseInt(id, 10));
 
-                    setFormState(prev => ({ ...prev, dataLoading: false }));
+                    setFormState(prev => ({ ...prev, articleDataLoading: false }));
 
                 } catch (error) {
                     console.error("Error fetching article for edit:", error);
-                    setFormState(prev => ({ ...prev, dataLoading: false, errors: { submit: error.message || 'Failed to load article details' } }));
+                    setFormState(prev => ({ ...prev, articleDataLoading: false, errors: { submit: error.message || 'Failed to load article details' } }));
                 }
             };
             fetchArticleDetails();
@@ -197,7 +320,7 @@ function CreateArticlePage() {
     // Fetch master data and set ArticleType from prop
     const fetchMasterData = async () => {
         try {
-            setFormState(prev => ({ ...prev, dataLoading: true, errors: {} }));
+            setFormState(prev => ({ ...prev, masterDataLoading: true, errors: {} }));
 
             // Reset form data slightly when type changes, but maybe keep some? 
             // Safe to re-init for clean slate
@@ -222,15 +345,34 @@ function CreateArticlePage() {
                 articleTypes: types,
                 intentTypes: intents,
                 audienceTypes: audiences,
-                dataLoading: false,
+                masterDataLoading: false,
             }));
 
             if (selectedArticleType && !isEditMode) {
                 setFormData(prev => ({ ...prev, articleType: selectedArticleType }));
             }
+
+            // Load draft from localStorage for new articles
+            if (!isEditMode) {
+                const savedDraft = localStorage.getItem('topic_trail_article_draft');
+                if (savedDraft) {
+                    try {
+                        const parsed = JSON.parse(savedDraft);
+                        // Simple check to ensure draft is recent or relevant? 
+                        // For now, just ask if user wants to restore
+                        if (window.confirm("Found a saved draft. Would you like to restore it?")) {
+                            setFormData(prev => ({ ...prev, ...parsed }));
+                        } else {
+                            localStorage.removeItem('topic_trail_article_draft');
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse draft", e);
+                    }
+                }
+            }
         } catch (error) {
             console.error('Error loading form data:', error);
-            setFormState(prev => ({ ...prev, dataLoading: false }));
+            setFormState(prev => ({ ...prev, masterDataLoading: false }));
         }
     };
 
@@ -272,6 +414,26 @@ function CreateArticlePage() {
         return () => clearTimeout(debounceTimer);
     }, [tagInput]);
 
+    // Autosave Effect
+    useEffect(() => {
+        if (isEditMode) return; // Don't autosave in edit mode to avoid overwriting production data logic
+
+        const saveTimer = setTimeout(() => {
+            if (formData.title || formData.pages[0]?.content) {
+                setIsSaving(true);
+                localStorage.setItem('topic_trail_article_draft', JSON.stringify(formData));
+                setLastSaved(new Date());
+                setTimeout(() => setIsSaving(false), 2000);
+            }
+        }, 30000); // 30 seconds
+
+        return () => clearTimeout(saveTimer);
+    }, [formData, isEditMode]);
+
+    const clearDraft = () => {
+        localStorage.removeItem('topic_trail_article_draft');
+    };
+
     // Handle input changes
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -285,19 +447,27 @@ function CreateArticlePage() {
     const handlePageChange = (index, value) => {
         setFormData(prev => {
             const newPages = [...prev.pages];
-            newPages[index] = value;
+            newPages[index] = { ...newPages[index], content: value };
             return { ...prev, pages: newPages };
         });
 
-        // Clear content error if any
         if (formState.errors.content) {
             setFormState(prev => ({ ...prev, errors: { ...prev.errors, content: null } }));
         }
     };
 
+    const handlePageTitleChange = (index, newTitle) => {
+        setFormData(prev => {
+            const newPages = [...prev.pages];
+            newPages[index] = { ...newPages[index], title: newTitle };
+            return { ...prev, pages: newPages };
+        });
+    };
+
     const addPage = () => {
         setFormData(prev => {
-            const newPages = [...prev.pages, ''];
+            const nextPageNum = prev.pages.length + 1;
+            const newPages = [...prev.pages, { title: `Page ${nextPageNum}`, content: '' }];
             setActiveContentPage(newPages.length - 1);
             return { ...prev, pages: newPages };
         });
@@ -411,6 +581,77 @@ function CreateArticlePage() {
         }
     }, [token, uploadedArticleId, isEditMode, id]);
 
+    // ==================== INLINE FILE HANDLERS ====================
+    const handleInsertFile = useCallback(() => {
+        inlineFileInputRef.current?.click();
+    }, []);
+
+    const handleInlineFileSelected = useCallback(async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Reset input
+        e.target.value = '';
+
+        const articleId = uploadedArticleId || (isEditMode ? parseInt(id, 10) : null);
+        if (!articleId) {
+            alert('Please save your article first before adding inline files.');
+            return;
+        }
+
+        try {
+            setUploadingAttachment(true); // Reuse loading state
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('articleId', articleId);
+
+            const response = await api.uploadArticleAttachment(token, articleId, file);
+            if (response.success && (response.downloadUrl || response.url)) {
+                const quillEditor = quillRef.current?.getEditor?.() || quillRef.current?.editor;
+                if (quillEditor) {
+                    const range = quillEditor.getSelection(true);
+                    const fileUrl = response.downloadUrl || response.url;
+                    quillEditor.insertEmbed(range ? range.index : 0, 'file-card', {
+                        url: fileUrl,
+                        name: file.name,
+                        size: file.size,
+                        type: file.type
+                    });
+                    if (range) quillEditor.setSelection(range.index + 1);
+                }
+            } else {
+                alert('Failed to upload file: ' + (response.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('File upload error:', error);
+            alert('Error uploading file');
+        } finally {
+            setUploadingAttachment(false);
+        }
+    }, [token, uploadedArticleId, isEditMode, id]);
+
+    const insertAttachmentToEditor = useCallback((attachment) => {
+        const quillEditor = quillRef.current?.getEditor?.() || quillRef.current?.editor;
+        if (quillEditor) {
+            const range = quillEditor.getSelection(true) || { index: quillEditor.getLength() };
+
+            // Construct absolute URL using API helper
+            // If attachment has 'url' use it, else construct
+            // Assuming attachment object from API has 'id' and 'fileName'
+            const downloadUrl = attachment.url || api.getAttachmentDownloadUrl(attachment.id);
+
+            quillEditor.insertEmbed(range.index, 'file-card', {
+                url: downloadUrl,
+                name: attachment.fileName || attachment.name,
+                size: attachment.fileSize || attachment.size,
+                type: attachment.contentType || 'application/octet-stream' // fallback
+            });
+            quillEditor.setSelection(range.index + 1);
+        } else {
+            alert("Please click inside the editor content first.");
+        }
+    }, []);
+
     // ==================== PASTE IMAGE HANDLER ====================
     // Intercepts pasted images (base64) and uploads them to backend
     const handlePasteImage = useCallback(async (file) => {
@@ -516,8 +757,7 @@ function CreateArticlePage() {
         }
     }, []);
 
-    const handleAttachmentFilesSelected = useCallback((e) => {
-        const files = Array.from(e.target.files || []);
+    const processFiles = useCallback((files) => {
         if (files.length === 0) return;
 
         // Validate file types
@@ -532,6 +772,11 @@ function CreateArticlePage() {
 
         const validFiles = files.filter(file => {
             if (!allowedTypes.includes(file.type)) {
+                // Also check extension as some browsers have poor MIME mapping for office docs
+                const ext = file.name.split('.').pop().toLowerCase();
+                const allowedExts = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'gif'];
+                if (allowedExts.includes(ext)) return true;
+
                 console.warn(`File type not allowed: ${file.type}`);
                 return false;
             }
@@ -548,8 +793,35 @@ function CreateArticlePage() {
         }
 
         setPendingAttachments(prev => [...prev, ...validFiles]);
-        e.target.value = ''; // Reset input
     }, []);
+
+    const handleAttachmentFilesSelected = useCallback((e) => {
+        const files = Array.from(e.target.files || []);
+        processFiles(files);
+        // Reset input so same file can be selected again
+        if (e.target) e.target.value = '';
+    }, [processFiles]);
+
+    const handleDragOver = useCallback((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingAttachment(true);
+    }, []);
+
+    const handleDragLeave = useCallback((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingAttachment(false);
+    }, []);
+
+    const handleDrop = useCallback((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingAttachment(false);
+
+        const files = Array.from(e.dataTransfer.files || []);
+        processFiles(files);
+    }, [processFiles]);
 
     const removePendingAttachment = useCallback((index) => {
         setPendingAttachments(prev => prev.filter((_, i) => i !== index));
@@ -586,7 +858,7 @@ function CreateArticlePage() {
             setActiveTab('basics');
         }
 
-        const totalContent = formData.pages.join('').trim();
+        const totalContent = formData.pages.map(p => p.content).join('').trim();
         const textContent = totalContent.replace(/<[^>]*>/g, '').trim();
 
         if (!textContent) {
@@ -626,10 +898,15 @@ function CreateArticlePage() {
         try {
             setFormState(prev => ({ ...prev, loading: true, errors: {} }));
 
+            const joinedContent = formData.pages.map(p => p.content).join('<!-- PAGE_BREAK -->');
+            const pageTitles = formData.pages.map(p => p.title);
+            // Append metadata at the end of content
+            const finalContent = joinedContent + `<!-- METADATA: ${JSON.stringify({ pageTitles })} -->`;
+
             const articleData = {
                 Title: formData.title.trim(),
                 Description: formData.description?.trim() || null,
-                Content: formData.pages.join('<!-- PAGE_BREAK -->'), // Join pages
+                Content: finalContent,
                 CategoryId: parseInt(formData.categoryId, 10),
                 SubCategoryId: formData.subCategoryId ? parseInt(formData.subCategoryId, 10) : null,
                 ArticleType: parseInt(formData.articleType, 10),
@@ -680,6 +957,8 @@ function CreateArticlePage() {
                 successMessage: isEditMode ? 'Article updated successfully!' : 'Article created successfully!',
             }));
 
+            clearDraft(); // Remove local draft on success
+
             setTimeout(() => {
                 navigate('/articles');
             }, 1500);
@@ -694,6 +973,41 @@ function CreateArticlePage() {
         }
     };
 
+    // Calculate Content Stats
+    const stats = useMemo(() => {
+        const allContent = formData.pages.map(p => p.content).filter(c => typeof c === 'string').join(' ');
+        const text = allContent.replace(/<[^>]*>/g, ' '); // Strip HTML tags
+        const wordCount = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+        const readingTime = Math.max(1, Math.ceil(wordCount / 225)); // Average 225 words per minute
+        return { wordCount, readingTime };
+    }, [formData.pages]);
+
+    // Pre-publish Checklist
+    const publishChecklist = useMemo(() => {
+        return [
+            { id: 'title', label: 'Title added', value: !!formData.title.trim() },
+            { id: 'category', label: 'Category selected', value: !!formData.categoryId },
+            { id: 'content', label: 'Content written', value: formData.pages.some(p => p.content && p.content.replace(/<[^>]*>/g, '').trim().length > 10) },
+            { id: 'tags', label: 'Tags added', value: formData.tags.length > 0 },
+            { id: 'articleType', label: 'Type selected', value: !!formData.articleType }
+        ];
+    }, [formData]);
+
+    // Memoize ReactQuill modules to prevent re-initialization
+    const quillModules = useMemo(() => ({
+        toolbar: {
+            container: "#toolbar",
+            handlers: {
+                image: handleImageUpload,
+                insertFile: handleInsertFile
+            }
+        },
+        imageResize: {
+            parchment: Quill.import('parchment'),
+            modules: ['Resize', 'DisplaySize']
+        }
+    }), [handleImageUpload, handleInsertFile]);
+
     const renderSelectOptions = (items) => {
         if (!Array.isArray(items)) return null;
         return items.map((item, idx) => {
@@ -707,9 +1021,13 @@ function CreateArticlePage() {
         });
     };
 
-    const { loading, dataLoading, errors, successMessage, categories, subCategories, intentTypes, audienceTypes } = formState;
+    const { loading, masterDataLoading, articleDataLoading, errors, successMessage, categories, subCategories, intentTypes, audienceTypes } = formState;
 
-    if (dataLoading) {
+    // In edit mode, wait for both master data and article data to load
+    // In create mode, only wait for master data
+    const isLoading = masterDataLoading || (isEditMode && articleDataLoading);
+
+    if (isLoading) {
         return (
             <div className="text-center py-5">
                 <div className="spinner-border text-primary" role="status"></div>
@@ -730,470 +1048,632 @@ function CreateArticlePage() {
                 </div>
             </div>
 
-            <div className="card shadow-sm border-0">
-                <div className="card-header bg-white border-bottom-0 pt-4 px-4 pb-0">
-                    <ul className="nav nav-tabs card-header-tabs">
-                        <li className="nav-item">
-                            <button
-                                className={`nav-link ${activeTab === 'basics' ? 'active fw-bold' : ''}`}
-                                onClick={() => setActiveTab('basics')}
-                            >
-                                1. Basics
-                            </button>
-                        </li>
-                        <li className="nav-item">
-                            <button
-                                className={`nav-link ${activeTab === 'content' ? 'active fw-bold' : ''}`}
-                                onClick={() => setActiveTab('content')}
-                            >
-                                2. Content
-                            </button>
-                        </li>
-                        <li className="nav-item">
-                            <button
-                                className={`nav-link ${activeTab === 'settings' ? 'active fw-bold' : ''}`}
-                                onClick={() => setActiveTab('settings')}
-                            >
-                                3. Settings
-                            </button>
-                        </li>
-                    </ul>
-                </div>
+            <form onSubmit={handleSubmit} onKeyDown={(e) => {
+                // Prevent form submission on Enter key except when on Settings tab
+                if (e.key === 'Enter' && activeTab !== 'settings' && e.target.tagName !== 'TEXTAREA') {
+                    e.preventDefault();
+                }
+            }}>
+                <div className="card shadow-sm border-0">
+                    <div className="card-header bg-white border-bottom-0 pt-4 px-4 pb-0">
+                        <ul className="nav nav-tabs card-header-tabs">
+                            <li className="nav-item">
+                                <button
+                                    type="button"
+                                    className={`nav-link ${activeTab === 'basics' ? 'active fw-bold' : ''}`}
+                                    onClick={() => setActiveTab('basics')}
+                                >
+                                    1. Basics
+                                </button>
+                            </li>
+                            <li className="nav-item">
+                                <button
+                                    type="button"
+                                    className={`nav-link ${activeTab === 'content' ? 'active fw-bold' : ''}`}
+                                    onClick={() => setActiveTab('content')}
+                                >
+                                    2. Content
+                                </button>
+                            </li>
+                            <li className="nav-item">
+                                <button
+                                    type="button"
+                                    className={`nav-link ${activeTab === 'settings' ? 'active fw-bold' : ''}`}
+                                    onClick={() => setActiveTab('settings')}
+                                >
+                                    3. Settings
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
 
-                <div className="card-body p-4">
-                    {successMessage && (
-                        <div className="alert alert-success d-flex align-items-center mb-4">
-                            <i className="bi bi-check-circle-fill me-2"></i>
-                            {successMessage}
-                        </div>
-                    )}
-                    {errors.submit && (
-                        <div className="alert alert-danger d-flex align-items-center mb-4">
-                            <i className="bi bi-exclamation-circle-fill me-2"></i>
-                            {errors.submit}
-                        </div>
-                    )}
+                    <div className="card-body p-4">
+                        {successMessage && (
+                            <div className="alert alert-success d-flex align-items-center mb-4">
+                                <i className="bi bi-check-circle-fill me-2"></i>
+                                {successMessage}
+                            </div>
+                        )}
+                        {errors.submit && (
+                            <div className="alert alert-danger d-flex align-items-center mb-4">
+                                <i className="bi bi-exclamation-circle-fill me-2"></i>
+                                {errors.submit}
+                            </div>
+                        )}
 
-                    <form onSubmit={handleSubmit}>
+                        <div className="row g-4">
+                            <div className={isFocusMode ? "col-12" : "col-lg-9"}>
+                                <div className="main-editor-area">
 
-                        {/* TAB: BASICS */}
-                        {activeTab === 'basics' && (
-                            <div className="animate__animated animate__fadeIn">
-                                {/* Title */}
-                                <div className="mb-3">
-                                    <label className="form-label fw-bold">
-                                        {articleTypeParam === 'question' ? 'Question' : 'Title'} <span className="text-danger">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        className={`form-control ${errors.title ? 'is-invalid' : ''}`}
-                                        name="title"
-                                        value={formData.title}
-                                        onChange={handleInputChange}
-                                        placeholder={articleTypeParam === 'question' ? 'What would you like to ask?' : 'Enter an engaging title...'}
-                                    />
-                                    {errors.title && <div className="invalid-feedback">{errors.title}</div>}
-                                </div>
+                                    {/* TAB: BASICS */}
+                                    {activeTab === 'basics' && (
+                                        <div className="animate__animated animate__fadeIn">
+                                            {/* Title */}
+                                            <div className="mb-3">
+                                                <label className="form-label fw-bold">
+                                                    {articleTypeParam === 'question' ? 'Question' : 'Title'} <span className="text-danger">*</span>
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    className={`form-control ${errors.title ? 'is-invalid' : ''}`}
+                                                    name="title"
+                                                    value={formData.title}
+                                                    onChange={handleInputChange}
+                                                    placeholder={articleTypeParam === 'question' ? 'What would you like to ask?' : 'Enter an engaging title...'}
+                                                />
+                                                {errors.title && <div className="invalid-feedback">{errors.title}</div>}
+                                            </div>
 
-                                {/* Description (Post Only) */}
-                                {articleTypeParam === 'post' && (
-                                    <div className="mb-3">
-                                        <label className="form-label fw-bold">
-                                            Description <span className="text-muted fw-normal">(Optional)</span>
-                                        </label>
-                                        <input
-                                            type="text"
-                                            className="form-control"
-                                            name="description"
-                                            value={formData.description}
-                                            onChange={handleInputChange}
-                                            placeholder="A brief summary..."
-                                            maxLength="1000"
-                                        />
-                                        <div className="text-end form-text">{formData.description.length}/1000</div>
-                                    </div>
-                                )}
+                                            {/* Description (Post Only) */}
+                                            {articleTypeParam === 'post' && (
+                                                <div className="mb-3">
+                                                    <label className="form-label fw-bold">
+                                                        Description <span className="text-muted fw-normal">(Optional)</span>
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        className="form-control"
+                                                        name="description"
+                                                        value={formData.description}
+                                                        onChange={handleInputChange}
+                                                        placeholder="A brief summary..."
+                                                        maxLength="1000"
+                                                    />
+                                                    <div className="text-end form-text">{formData.description?.length || 0}/1000</div>
+                                                </div>
+                                            )}
 
-                                {/* Category & Subcategory */}
-                                <div className="row g-3 mb-4">
-                                    <div className="col-md-6">
-                                        <label className="form-label fw-bold">Category <span className="text-danger">*</span></label>
-                                        <select
-                                            className={`form-select ${errors.categoryId ? 'is-invalid' : ''}`}
-                                            name="categoryId"
-                                            value={formData.categoryId}
-                                            onChange={handleInputChange}
-                                        >
-                                            <option value="">Select Category...</option>
-                                            {renderSelectOptions(categories)}
-                                        </select>
-                                        {errors.categoryId && <div className="invalid-feedback">{errors.categoryId}</div>}
-                                    </div>
-                                    <div className="col-md-6">
-                                        <label className="form-label fw-bold">Sub-Category</label>
-                                        <select
-                                            className="form-select"
-                                            name="subCategoryId"
-                                            value={formData.subCategoryId}
-                                            onChange={handleInputChange}
-                                            disabled={!formData.categoryId || subCategories.length === 0}
-                                        >
-                                            <option value="">Select Sub-Category...</option>
-                                            {renderSelectOptions(subCategories)}
-                                        </select>
-                                    </div>
-                                </div>
+                                            {/* Category & Subcategory */}
+                                            <div className="row g-3 mb-4">
+                                                <div className="col-md-6">
+                                                    <label className="form-label fw-bold">Category <span className="text-danger">*</span></label>
+                                                    <select
+                                                        className={`form-select ${errors.categoryId ? 'is-invalid' : ''}`}
+                                                        name="categoryId"
+                                                        value={formData.categoryId}
+                                                        onChange={handleInputChange}
+                                                    >
+                                                        <option value="">Select Category...</option>
+                                                        {renderSelectOptions(categories)}
+                                                    </select>
+                                                    {errors.categoryId && <div className="invalid-feedback">{errors.categoryId}</div>}
+                                                </div>
+                                                <div className="col-md-6">
+                                                    <label className="form-label fw-bold">Sub-Category</label>
+                                                    <select
+                                                        className="form-select"
+                                                        name="subCategoryId"
+                                                        value={formData.subCategoryId}
+                                                        onChange={handleInputChange}
+                                                        disabled={!formData.categoryId || subCategories.length === 0}
+                                                    >
+                                                        <option value="">Select Sub-Category...</option>
+                                                        {renderSelectOptions(subCategories)}
+                                                    </select>
+                                                </div>
+                                            </div>
 
-                                {/* Tags */}
-                                <div className="mb-4">
-                                    <label className="form-label fw-bold">Tags</label>
-                                    <div className="p-2 border rounded bg-white tags-input-container">
-                                        <div className="d-flex flex-wrap gap-2 mb-2">
-                                            {formData.tags.map((tag, index) => (
-                                                <span key={index} className="badge bg-primary-subtle text-primary border border-primary-subtle d-flex align-items-center">
-                                                    {tag}
-                                                    <button type="button" className="btn-close btn-close-white ms-2" style={{ fontSize: '0.5em' }} onClick={() => removeTag(tag)}></button>
-                                                </span>
-                                            ))}
+                                            {/* Tags */}
+                                            <div className="mb-4">
+                                                <label className="form-label fw-bold">Tags</label>
+                                                <div className="p-2 border rounded bg-white tags-input-container">
+                                                    <div className="d-flex flex-wrap gap-2 mb-2">
+                                                        {formData.tags.map((tag, index) => (
+                                                            <span key={index} className="badge bg-primary-subtle text-primary border border-primary-subtle d-flex align-items-center">
+                                                                {tag}
+                                                                <button type="button" className="btn-close ms-2" style={{ fontSize: '0.5em' }} onClick={() => removeTag(tag)}></button>
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                    <div className="position-relative">
+                                                        <input
+                                                            ref={tagInputRef}
+                                                            type="text"
+                                                            className="form-control border-0 shadow-none p-0"
+                                                            value={tagInput}
+                                                            onChange={(e) => setTagInput(e.target.value)}
+                                                            onKeyDown={handleTagKeyDown}
+                                                            onBlur={() => setTimeout(() => setShowTagSuggestions(false), 200)}
+                                                            placeholder={formData.tags.length === 0 ? "Type and press Enter..." : "Add more tags..."}
+                                                        />
+                                                        {showTagSuggestions && tagSuggestions.length > 0 && (
+                                                            <div className="list-group position-absolute w-100 shadow-sm mt-1" style={{ zIndex: 10 }}>
+                                                                {tagSuggestions.map((suggestion, idx) => (
+                                                                    <button
+                                                                        key={idx}
+                                                                        type="button"
+                                                                        className="list-group-item list-group-item-action"
+                                                                        onClick={() => addTag(typeof suggestion === 'string' ? suggestion : suggestion.name || suggestion.Name)}
+                                                                    >
+                                                                        {typeof suggestion === 'string' ? suggestion : suggestion.name || suggestion.Name}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Attachments (Post Only) */}
+
+                                            {/* Poll Options (Poll Only) */}
+                                            {articleTypeParam === 'poll' && (
+                                                <div className="mb-4">
+                                                    <label className="form-label fw-bold">Poll Options <span className="text-danger">*</span></label>
+                                                    {formData.pollOptions.map((option, idx) => (
+                                                        <div key={idx} className="input-group mb-2">
+                                                            <span className="input-group-text">{idx + 1}</span>
+                                                            <input
+                                                                type="text"
+                                                                className="form-control"
+                                                                value={option}
+                                                                onChange={(e) => {
+                                                                    const newOptions = [...formData.pollOptions];
+                                                                    newOptions[idx] = e.target.value;
+                                                                    setFormData(prev => ({ ...prev, pollOptions: newOptions }));
+                                                                }}
+                                                                placeholder={`Option ${idx + 1}`}
+                                                            />
+                                                            {formData.pollOptions.length > 2 && (
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-outline-danger"
+                                                                    onClick={() => {
+                                                                        const newOptions = formData.pollOptions.filter((_, i) => i !== idx);
+                                                                        setFormData(prev => ({ ...prev, pollOptions: newOptions }));
+                                                                    }}
+                                                                >
+                                                                    <i className="bi bi-x"></i>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                    {formData.pollOptions.length < 5 && (
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-sm btn-outline-primary"
+                                                            onClick={() => setFormData(prev => ({ ...prev, pollOptions: [...prev.pollOptions, ''] }))}
+                                                        >
+                                                            + Add Option
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
-                                        <div className="position-relative">
-                                            <input
-                                                ref={tagInputRef}
-                                                type="text"
-                                                className="form-control border-0 shadow-none p-0"
-                                                value={tagInput}
-                                                onChange={(e) => setTagInput(e.target.value)}
-                                                onKeyDown={handleTagKeyDown}
-                                                onBlur={() => setTimeout(() => setShowTagSuggestions(false), 200)}
-                                                placeholder={formData.tags.length === 0 ? "Type and press Enter..." : "Add more tags..."}
-                                            />
-                                            {showTagSuggestions && tagSuggestions.length > 0 && (
-                                                <div className="list-group position-absolute w-100 shadow-sm mt-1" style={{ zIndex: 10 }}>
-                                                    {tagSuggestions.map((suggestion, idx) => (
+                                    )}
+
+                                    {/* TAB: CONTENT */}
+                                    {activeTab === 'content' && (
+                                        <div className="animate__animated animate__fadeIn">
+                                            <div className="d-flex mb-3 align-items-center">
+                                                <div className="d-flex overflow-auto pb-2 align-items-center flex-grow-1 me-2" style={{ scrollbarWidth: 'thin' }}>
+                                                    {formData.pages.map((page, idx) => (
                                                         <button
                                                             key={idx}
                                                             type="button"
-                                                            className="list-group-item list-group-item-action"
-                                                            onClick={() => addTag(typeof suggestion === 'string' ? suggestion : suggestion.name || suggestion.Name)}
+                                                            className={`btn btn-sm me-2 text-nowrap d-flex align-items-center ${activeContentPage === idx ? 'btn-primary' : 'btn-outline-secondary'}`}
+                                                            onClick={() => setActiveContentPage(idx)}
+                                                            onDoubleClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const newTitle = prompt("Rename page:", page.title);
+                                                                if (newTitle) handlePageTitleChange(idx, newTitle);
+                                                            }}
+                                                            title="Double click to rename"
                                                         >
-                                                            {typeof suggestion === 'string' ? suggestion : suggestion.name || suggestion.Name}
+                                                            <span className="me-1">{page.title || `Page ${idx + 1}`}</span>
+                                                            {formData.pages.length > 1 && (
+                                                                <i className="bi bi-x ms-2" onClick={(e) => { e.stopPropagation(); removePage(idx); }}></i>
+                                                            )}
                                                         </button>
                                                     ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Attachments (Post Only) */}
-
-                                {/* Poll Options (Poll Only) */}
-                                {articleTypeParam === 'poll' && (
-                                    <div className="mb-4">
-                                        <label className="form-label fw-bold">Poll Options <span className="text-danger">*</span></label>
-                                        {formData.pollOptions.map((option, idx) => (
-                                            <div key={idx} className="input-group mb-2">
-                                                <span className="input-group-text">{idx + 1}</span>
-                                                <input
-                                                    type="text"
-                                                    className="form-control"
-                                                    value={option}
-                                                    onChange={(e) => {
-                                                        const newOptions = [...formData.pollOptions];
-                                                        newOptions[idx] = e.target.value;
-                                                        setFormData(prev => ({ ...prev, pollOptions: newOptions }));
-                                                    }}
-                                                    placeholder={`Option ${idx + 1}`}
-                                                />
-                                                {formData.pollOptions.length > 2 && (
                                                     <button
                                                         type="button"
-                                                        className="btn btn-outline-danger"
-                                                        onClick={() => {
-                                                            const newOptions = formData.pollOptions.filter((_, i) => i !== idx);
-                                                            setFormData(prev => ({ ...prev, pollOptions: newOptions }));
-                                                        }}
+                                                        className="btn btn-sm btn-outline-success text-nowrap"
+                                                        onClick={addPage}
                                                     >
-                                                        <i className="bi bi-x"></i>
+                                                        <i className="bi bi-plus-lg me-1"></i> Add Page
                                                     </button>
+                                                </div>
+
+                                                {/* Focus Mode Toggle */}
+                                                {setIsFocusMode && (
+                                                    <div className="flex-shrink-0">
+                                                        <button
+                                                            type="button"
+                                                            className={`btn btn-sm ${isFocusMode ? 'btn-primary' : 'btn-outline-secondary'}`}
+                                                            onClick={() => setIsFocusMode(!isFocusMode)}
+                                                            title={isFocusMode ? "Exit Focus Mode" : "Enter Focus Mode"}
+                                                        >
+                                                            <i className={`bi ${isFocusMode ? 'bi-fullscreen-exit' : 'bi-fullscreen'}`}></i> {isFocusMode ? 'Exit Focus' : 'Focus'}
+                                                        </button>
+                                                    </div>
                                                 )}
                                             </div>
-                                        ))}
-                                        {formData.pollOptions.length < 5 && (
-                                            <button
-                                                type="button"
-                                                className="btn btn-sm btn-outline-primary"
-                                                onClick={() => setFormData(prev => ({ ...prev, pollOptions: [...prev.pollOptions, ''] }))}
+
+
+                                            <div className="mb-4">
+                                                <label className="form-label fw-bold">
+                                                    {articleTypeParam === 'question' ? 'Details' : articleTypeParam === 'poll' ? 'Description' : `Content - Page ${activeContentPage + 1}`} <span className="text-danger">*</span>
+                                                </label>
+                                                <div className={`quill-wrapper ${errors.content ? 'is-invalid border border-danger rounded' : ''}`} style={{ background: '#fff' }}>
+                                                    {/* Custom Toolbar */}
+                                                    <div id="toolbar" className="border-bottom">
+                                                        <span className="ql-formats">
+                                                            <select className="ql-header" defaultValue="">
+                                                                <option value="1"></option>
+                                                                <option value="2"></option>
+                                                                <option value="3"></option>
+                                                                <option value=""></option>
+                                                            </select>
+                                                        </span>
+                                                        <span className="ql-formats">
+                                                            <button type="button" className="ql-bold"></button>
+                                                            <button type="button" className="ql-italic"></button>
+                                                            <button type="button" className="ql-underline"></button>
+                                                            <button type="button" className="ql-strike"></button>
+                                                        </span>
+                                                        <span className="ql-formats">
+                                                            <button type="button" className="ql-list" value="ordered"></button>
+                                                            <button type="button" className="ql-list" value="bullet"></button>
+                                                            <button type="button" className="ql-blockquote"></button>
+                                                            <button type="button" className="ql-code-block"></button>
+                                                        </span>
+                                                        <span className="ql-formats">
+                                                            <button type="button" className="ql-link"></button>
+                                                            <button type="button" className="ql-image"></button>
+                                                            <button className="ql-insertFile" type="button">
+                                                                <i className="bi bi-paperclip"></i>
+                                                            </button>
+                                                        </span>
+                                                        <span className="ql-formats">
+                                                            <button type="button" className="ql-clean"></button>
+                                                        </span>
+                                                    </div>
+
+                                                    <ReactQuill
+                                                        key={activeContentPage}
+                                                        ref={quillRef}
+                                                        theme="snow"
+                                                        value={formData.pages[activeContentPage]?.content || ''}
+                                                        onChange={(value) => handlePageChange(activeContentPage, value)}
+                                                        placeholder="Write your content here..."
+                                                        modules={quillModules}
+                                                        style={{ height: '300px', marginBottom: '50px' }}
+                                                    />
+                                                </div>
+                                                {/* Hidden inputs for file selection */}
+                                                <input
+                                                    type="file"
+                                                    ref={imageInputRef}
+                                                    style={{ display: 'none' }}
+                                                    accept="image/*"
+                                                    onChange={handleImageFileSelected}
+                                                />
+                                                <input
+                                                    type="file"
+                                                    ref={inlineFileInputRef}
+                                                    style={{ display: 'none' }}
+                                                    onChange={handleInlineFileSelected}
+                                                />
+                                                <input
+                                                    type="file"
+                                                    ref={fileInputRef}
+                                                    style={{ display: 'none' }}
+                                                    multiple
+                                                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif"
+                                                    onChange={handleAttachmentFilesSelected}
+                                                />
+                                                {uploadingImage && <div className="text-secondary small mt-1"><span className="spinner-border spinner-border-sm me-1"></span>Uploading image...</div>}
+                                            </div>
+                                            {errors.content && <div className="invalid-feedback d-block">{errors.content}</div>}
+                                            <div className="form-text text-end">
+                                                Words: {(formData.pages[activeContentPage]?.content || '').replace(/<[^>]*>/g, '').trim().split(/\s+/).filter(w => w.length > 0).length}
+                                            </div>
+
+
+                                            {/* ATTACHMENTS SECTION */}
+                                            <div
+                                                className={`mb-4 p-3 rounded border transition-all ${isDraggingAttachment ? 'bg-primary-subtle border-primary border-dashed shadow-sm' : 'bg-light'}`}
+                                                onDragOver={handleDragOver}
+                                                onDragLeave={handleDragLeave}
+                                                onDrop={handleDrop}
+                                                style={{ borderStyle: isDraggingAttachment ? 'dashed' : 'solid', borderWidth: '2px' }}
                                             >
-                                                + Add Option
-                                            </button>
-                                        )}
-                                    </div>
-                                )}
+                                                <div className="text-center mb-2" style={{ display: isDraggingAttachment ? 'block' : 'none' }}>
+                                                    <i className="bi bi-cloud-arrow-up fs-1 text-primary"></i>
+                                                    <div className="fw-bold">Drop files here to attach</div>
+                                                </div>
+                                                <div className="d-flex justify-content-between align-items-center mb-3">
+                                                    <label className="form-label fw-bold mb-0">
+                                                        <i className="bi bi-paperclip me-2"></i> Attachments
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-sm btn-outline-primary"
+                                                        onClick={handleAttachmentFileSelect}
+                                                        disabled={uploadingAttachment}
+                                                    >
+                                                        <i className="bi bi-plus-lg me-1"></i> Add Files
+                                                    </button>
 
-                                <div className="d-flex justify-content-end mt-4">
-                                    <button type="button" className="btn btn-primary" onClick={() => setActiveTab('content')}>
-                                        Next: Content <i className="bi bi-arrow-right ms-1"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        )}
 
-                        {/* TAB: CONTENT */}
-                        {activeTab === 'content' && (
-                            <div className="animate__animated animate__fadeIn">
-                                <div className="d-flex mb-3 align-items-center overflow-auto pb-2">
-                                    {formData.pages.map((_, idx) => (
-                                        <button
-                                            key={idx}
-                                            type="button"
-                                            className={`btn btn-sm me-2 text-nowrap ${activeContentPage === idx ? 'btn-primary' : 'btn-outline-secondary'}`}
-                                            onClick={() => setActiveContentPage(idx)}
-                                        >
-                                            Page {idx + 1}
-                                            {formData.pages.length > 1 && (
-                                                <i className="bi bi-x ms-2" onClick={(e) => { e.stopPropagation(); removePage(idx); }}></i>
+                                                </div>
+
+                                                {(pendingAttachments.length > 0 || uploadedAttachments.length > 0) ? (
+                                                    <div className="list-group">
+                                                        {/* Existing Uploaded Attachments */}
+                                                        {uploadedAttachments.map((att) => (
+                                                            <div key={att.id} className="list-group-item d-flex justify-content-between align-items-center">
+                                                                <div className="d-flex align-items-center text-truncate">
+                                                                    <i className={`bi ${getFileIcon(att.fileName)} fs-4 me-3`}></i>
+                                                                    <div>
+                                                                        <div className="fw-medium text-truncate" style={{ maxWidth: '300px' }}>{att.fileName}</div>
+                                                                        <div className="text-muted small">{formatFileSize(att.fileSize)}</div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="d-flex align-items-center">
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-sm btn-link text-decoration-none me-2"
+                                                                        onClick={() => insertAttachmentToEditor(att)}
+                                                                        title="Insert into content"
+                                                                    >
+                                                                        Insert
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-sm btn-outline-danger border-0"
+                                                                        onClick={() => removeUploadedAttachment(att.id)}
+                                                                        title="Remove attachment"
+                                                                    >
+                                                                        <i className="bi bi-trash"></i>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+
+                                                        {/* Pending Attachments */}
+                                                        {pendingAttachments.map((file, idx) => (
+                                                            <div key={`pending-${idx}`} className="list-group-item d-flex justify-content-between align-items-center bg-light-subtle">
+                                                                <div className="d-flex align-items-center text-truncate">
+                                                                    <i className={`bi ${getFileIcon(file.name)} fs-4 me-3`}></i>
+                                                                    <div>
+                                                                        <div className="fw-medium text-truncate" style={{ maxWidth: '300px' }}>{file.name} <span className="badge bg-warning text-dark ms-2">Pending</span></div>
+                                                                        <div className="text-muted small">{formatFileSize(file.size)}</div>
+                                                                    </div>
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-sm btn-outline-danger border-0"
+                                                                    onClick={() => removePendingAttachment(idx)}
+                                                                    title="Remove file"
+                                                                >
+                                                                    <i className="bi bi-x-lg"></i>
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-center text-muted py-3 border border-dashed rounded bg-white" onClick={handleAttachmentFileSelect} style={{ cursor: 'pointer' }}>
+                                                        <i className="bi bi-cloud-upload fs-3 d-block mb-1"></i>
+                                                        <small>Click to upload documents or images</small>
+                                                    </div>
+                                                )}
+                                                {uploadingAttachment && <div className="mt-2 text-primary small"><span className="spinner-border spinner-border-sm me-2"></span>Uploading...</div>}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* TAB: SETTINGS */}
+                                    {activeTab === 'settings' && (
+                                        <div className="animate__animated animate__fadeIn">
+                                            <h5 className="mb-4">Adjust visibility and audience settings</h5>
+
+                                            {/* Intent (Post only) */}
+                                            {articleTypeParam === 'post' && (
+                                                <div className="mb-4">
+                                                    <label className="form-label fw-bold">Intent</label>
+                                                    <select
+                                                        className="form-select"
+                                                        name="intentType"
+                                                        value={formData.intentType}
+                                                        onChange={handleInputChange}
+                                                    >
+                                                        <option value="">Select Intent...</option>
+                                                        {renderSelectOptions(intentTypes)}
+                                                    </select>
+                                                </div>
                                             )}
-                                        </button>
-                                    ))}
+
+                                            <div className="mb-4">
+                                                <label className="form-label fw-bold">Visibility</label>
+                                                <select
+                                                    className="form-select"
+                                                    name="visibility"
+                                                    value={formData.visibility}
+                                                    onChange={handleInputChange}
+                                                >
+                                                    <option value="Public">Public</option>
+                                                    <option value="Private">Private</option>
+                                                </select>
+                                            </div>
+
+                                            {/* Audience (Post Only) */}
+                                            {articleTypeParam === 'post' && (
+                                                <div className="mb-4">
+                                                    <label className="form-label fw-bold">Target Audience</label>
+                                                    <div className="d-flex flex-wrap gap-2">
+                                                        {audienceTypes.map((audience, idx) => {
+                                                            const val = String(audience.id || audience.Id || audience.value || audience.Value);
+                                                            const label = audience.name || audience.Name || audience.value || audience.Value;
+                                                            const isSelected = formData.audienceTypes.includes(val);
+                                                            return (
+                                                                <div key={idx} className="form-check form-check-inline border rounded p-2 m-0 bg-light">
+                                                                    <input
+                                                                        className="form-check-input me-2"
+                                                                        type="checkbox"
+                                                                        checked={isSelected}
+                                                                        onChange={(e) => {
+                                                                            if (e.target.checked) {
+                                                                                setFormData(prev => ({
+                                                                                    ...prev,
+                                                                                    audienceTypes: [...prev.audienceTypes, val]
+                                                                                }));
+                                                                            } else {
+                                                                                setFormData(prev => ({
+                                                                                    ...prev,
+                                                                                    audienceTypes: prev.audienceTypes.filter(id => id !== val)
+                                                                                }));
+                                                                            }
+                                                                        }}
+                                                                        id={`audience-${val}`}
+                                                                    />
+                                                                    <label className="form-check-label" htmlFor={`audience-${val}`}>{label}</label>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div> {/* main-editor-area */}
+                            </div> {/* col-lg-9 */}
+
+                            {/* Sidebar Area */}
+                            {!isFocusMode && (
+                                <aside className="col-lg-3 border-start ps-lg-4">
+                                    <div className="sticky-top" style={{ top: '2rem', zIndex: 10 }}>
+                                        {/* Status & Stats */}
+                                        <div className="mb-4">
+                                            <h6 className="text-uppercase fw-bold text-muted small mb-3">Insights</h6>
+                                            <div className="p-3 bg-light rounded border">
+                                                <div className="d-flex justify-content-between mb-2">
+                                                    <span className="text-muted small">Word Count</span>
+                                                    <span className="fw-bold">{stats.wordCount}</span>
+                                                </div>
+                                                <div className="d-flex justify-content-between mb-2">
+                                                    <span className="text-muted small">Reading Time</span>
+                                                    <span className="fw-bold">{stats.readingTime} min</span>
+                                                </div>
+                                                <div className="d-flex justify-content-between">
+                                                    <span className="text-muted small">Pages</span>
+                                                    <span className="fw-bold">{formData.pages.length}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Pre-publish Checklist */}
+                                        <div className="mb-4">
+                                            <h6 className="text-uppercase fw-bold text-muted small mb-3">Pre-publish Checklist</h6>
+                                            <div className="p-3 bg-light rounded border">
+                                                <ul className="list-unstyled mb-0 small">
+                                                    {publishChecklist.map(item => (
+                                                        <li key={item.id} className="d-flex align-items-center mb-2">
+                                                            <i className={`bi ${item.value ? 'bi-check-circle-fill text-success' : 'bi-circle text-muted'} me-2`}></i>
+                                                            <span className={item.value ? '' : 'text-muted'}>{item.label}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        </div>
+
+                                        {/* Suggestions */}
+                                        <div className="mb-4">
+                                            <h6 className="text-uppercase fw-bold text-muted small mb-3">Writing Tips</h6>
+                                            <div className="p-3 bg-info-subtle text-info-emphasis rounded border border-info-subtle small">
+                                                {stats.wordCount < 100 && <p className="mb-0"><i className="bi bi-info-circle me-1"></i> Consider adding more detail to engage readers.</p>}
+                                                {stats.wordCount >= 100 && stats.wordCount < 500 && <p className="mb-0"><i className="bi bi-info-circle me-1"></i> Nice length! Add some images to break up the text.</p>}
+                                                {stats.wordCount >= 500 && <p className="mb-0"><i className="bi bi-info-circle me-1"></i> Great depth! Ensure you use headers for readability.</p>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </aside>
+                            )}
+                        </div> {/* row */}
+                    </div>
+
+                    {/* STICKY BOTTOM ACTION BAR */}
+                    <div className="card-footer bg-white border-top sticky-bottom py-3 px-4 shadow-sm rounded-bottom" style={{ bottom: 0, zIndex: 100 }}>
+                        <div className="d-flex justify-content-between align-items-center">
+                            <div className="d-flex align-items-center text-muted small">
+                                {isSaving ? (
+                                    <span><span className="spinner-border spinner-border-sm me-1"></span>Saving draft...</span>
+                                ) : (
+                                    lastSaved && <span><i className="bi bi-cloud-check me-1"></i> Saved at {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                )}
+                            </div>
+                            <div className="d-flex gap-2">
+                                {activeTab !== 'basics' && (
                                     <button
                                         type="button"
-                                        className="btn btn-sm btn-outline-success"
-                                        onClick={addPage}
+                                        className="btn btn-outline-secondary btn-sm px-3"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setActiveTab(activeTab === 'settings' ? 'content' : 'basics');
+                                        }}
                                     >
-                                        <i className="bi bi-plus-lg me-1"></i> Add Page
+                                        <i className="bi bi-arrow-left me-1"></i> Back
                                     </button>
-                                </div>
-
-                                <div className="mb-4">
-                                    <label className="form-label fw-bold">
-                                        {articleTypeParam === 'question' ? 'Details' : articleTypeParam === 'poll' ? 'Description' : `Content - Page ${activeContentPage + 1}`} <span className="text-danger">*</span>
-                                    </label>
-                                    <div className={`quill-wrapper ${errors.content ? 'is-invalid border border-danger rounded' : ''}`} style={{ background: '#fff' }}>
-                                        <ReactQuill
-                                            key={activeContentPage}
-                                            ref={quillRef}
-                                            theme="snow"
-                                            value={formData.pages[activeContentPage] || ''}
-                                            onChange={(value) => handlePageChange(activeContentPage, value)}
-                                            placeholder="Write your content here..."
-                                            modules={{
-                                                toolbar: {
-                                                    container: [
-                                                        [{ 'header': [1, 2, 3, false] }],
-                                                        ['bold', 'italic', 'underline', 'strike'],
-                                                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                                                        ['link', 'image'],
-                                                        ['clean']
-                                                    ],
-                                                    handlers: {
-                                                        image: handleImageUpload
-                                                    }
-                                                }
-                                            }}
-                                            style={{ height: '300px', marginBottom: '50px' }}
-                                        />
-                                    </div>
-                                    {/* Hidden inputs for file selection */}
-                                    <input
-                                        type="file"
-                                        ref={imageInputRef}
-                                        style={{ display: 'none' }}
-                                        accept="image/png, image/jpeg, image/gif"
-                                        onChange={handleImageFileSelected}
-                                    />
-                                    <input
-                                        type="file"
-                                        ref={fileInputRef}
-                                        style={{ display: 'none' }}
-                                        multiple
-                                        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif"
-                                        onChange={handleAttachmentFilesSelected}
-                                    />
-                                    {uploadingImage && <div className="text-secondary small mt-1"><span className="spinner-border spinner-border-sm me-1"></span>Uploading image...</div>}
-                                </div>
-                                {errors.content && <div className="invalid-feedback d-block">{errors.content}</div>}
-                                <div className="form-text text-end">
-                                    Words: {(formData.pages[activeContentPage] || '').replace(/<[^>]*>/g, '').trim().split(/\s+/).filter(w => w.length > 0).length}
-                                </div>
-
-
-                                {/* ATTACHMENTS SECTION */}
-                                <div className="mb-4 p-3 bg-light rounded border">
-                                    <div className="d-flex justify-content-between align-items-center mb-3">
-                                        <label className="form-label fw-bold mb-0">
-                                            <i className="bi bi-paperclip me-2"></i> Attachments
-                                        </label>
-                                        <button
-                                            type="button"
-                                            className="btn btn-sm btn-outline-primary"
-                                            onClick={handleAttachmentFileSelect}
-                                            disabled={uploadingAttachment}
-                                        >
-                                            <i className="bi bi-plus-lg me-1"></i> Add Files
-                                        </button>
-                                    </div>
-
-                                    {(pendingAttachments.length > 0 || uploadedAttachments.length > 0) ? (
-                                        <div className="list-group">
-                                            {/* Existing Uploaded Attachments */}
-                                            {uploadedAttachments.map((att) => (
-                                                <div key={att.id} className="list-group-item d-flex justify-content-between align-items-center">
-                                                    <div className="d-flex align-items-center text-truncate">
-                                                        <i className={`bi ${getFileIcon(att.fileName)} fs-4 me-3`}></i>
-                                                        <div>
-                                                            <div className="fw-medium text-truncate" style={{ maxWidth: '300px' }}>{att.fileName}</div>
-                                                            <div className="text-muted small">{formatFileSize(att.fileSize)}</div>
-                                                        </div>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        className="btn btn-sm btn-outline-danger border-0"
-                                                        onClick={() => removeUploadedAttachment(att.id)}
-                                                        title="Remove attachment"
-                                                    >
-                                                        <i className="bi bi-trash"></i>
-                                                    </button>
-                                                </div>
-                                            ))}
-
-                                            {/* Pending Attachments */}
-                                            {pendingAttachments.map((file, idx) => (
-                                                <div key={`pending-${idx}`} className="list-group-item d-flex justify-content-between align-items-center bg-light-subtle">
-                                                    <div className="d-flex align-items-center text-truncate">
-                                                        <i className={`bi ${getFileIcon(file.name)} fs-4 me-3`}></i>
-                                                        <div>
-                                                            <div className="fw-medium text-truncate" style={{ maxWidth: '300px' }}>{file.name} <span className="badge bg-warning text-dark ms-2">Pending</span></div>
-                                                            <div className="text-muted small">{formatFileSize(file.size)}</div>
-                                                        </div>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        className="btn btn-sm btn-outline-danger border-0"
-                                                        onClick={() => removePendingAttachment(idx)}
-                                                        title="Remove file"
-                                                    >
-                                                        <i className="bi bi-x-lg"></i>
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="text-center text-muted py-3 border border-dashed rounded bg-white" onClick={handleAttachmentFileSelect} style={{ cursor: 'pointer' }}>
-                                            <i className="bi bi-cloud-upload fs-3 d-block mb-1"></i>
-                                            <small>Click to upload documents or images</small>
-                                        </div>
-                                    )}
-                                    {uploadingAttachment && <div className="mt-2 text-primary small"><span className="spinner-border spinner-border-sm me-2"></span>Uploading attachments...</div>}
-                                </div>
-
-                                <div className="d-flex justify-content-between mt-4">
-                                    <button type="button" className="btn btn-outline-secondary" onClick={() => setActiveTab('basics')}>
-                                        <i className="bi bi-arrow-left ms-1"></i> Back: Basics
-                                    </button>
-                                    <button type="button" className="btn btn-primary" onClick={() => setActiveTab('settings')}>
-                                        Next: Settings <i className="bi bi-arrow-right ms-1"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* TAB: SETTINGS */}
-                        {activeTab === 'settings' && (
-                            <div className="animate__animated animate__fadeIn">
-                                <h5 className="mb-4">Adjust visibility and audience settings</h5>
-
-                                {/* Intent & Visibility (Post only) */}
-                                <div className="row g-3 mb-4">
-                                    {articleTypeParam === 'post' && (
-                                        <div className="col-md-6">
-                                            <label className="form-label fw-bold">Intent</label>
-                                            <select
-                                                className="form-select"
-                                                name="intentType"
-                                                value={formData.intentType}
-                                                onChange={handleInputChange}
-                                            >
-                                                <option value="">Select Intent...</option>
-                                                {renderSelectOptions(intentTypes)}
-                                            </select>
-                                        </div>
-                                    )}
-                                    <div className="col-md-6">
-                                        <label className="form-label fw-bold">Visibility</label>
-                                        <select
-                                            className="form-select"
-                                            name="visibility"
-                                            value={formData.visibility}
-                                            onChange={handleInputChange}
-                                        >
-                                            <option value="Public">Public</option>
-                                            <option value="Private">Private</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {/* Audience (Post Only) */}
-                                {articleTypeParam === 'post' && (
-                                    <div className="mb-4">
-                                        <label className="form-label fw-bold">Target Audience</label>
-                                        <div className="d-flex flex-wrap gap-2">
-                                            {audienceTypes.map((audience, idx) => {
-                                                const val = String(audience.id || audience.Id || audience.value || audience.Value);
-                                                const label = audience.name || audience.Name || audience.value || audience.Value;
-                                                const isSelected = formData.audienceTypes.includes(val);
-                                                return (
-                                                    <div key={idx} className="form-check form-check-inline border rounded p-2 m-0 bg-light">
-                                                        <input
-                                                            className="form-check-input me-2"
-                                                            type="checkbox"
-                                                            checked={isSelected}
-                                                            onChange={(e) => {
-                                                                if (e.target.checked) {
-                                                                    setFormData(prev => ({
-                                                                        ...prev,
-                                                                        audienceTypes: [...prev.audienceTypes, val]
-                                                                    }));
-                                                                } else {
-                                                                    setFormData(prev => ({
-                                                                        ...prev,
-                                                                        audienceTypes: prev.audienceTypes.filter(id => id !== val)
-                                                                    }));
-                                                                }
-                                                            }}
-                                                            id={`audience-${val}`}
-                                                        />
-                                                        <label className="form-check-label" htmlFor={`audience-${val}`}>{label}</label>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
                                 )}
 
-                                <div className="d-flex justify-content-between mt-5 pt-3 border-top">
-                                    <button type="button" className="btn btn-outline-secondary" onClick={() => setActiveTab('content')}>
-                                        <i className="bi bi-arrow-left ms-1"></i> Back: Content
+                                <button type="button" className="btn btn-outline-secondary btn-sm px-3" onClick={(e) => { e.preventDefault(); navigate(-1); }} disabled={loading}>
+                                    Cancel
+                                </button>
+
+                                {activeTab !== 'settings' && (
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary btn-sm px-4"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setActiveTab(activeTab === 'basics' ? 'content' : 'settings');
+                                        }}
+                                    >
+                                        Next <i className="bi bi-arrow-right ms-1"></i>
                                     </button>
-                                    <div className="d-flex gap-2">
-                                        <button type="button" className="btn btn-outline-secondary" onClick={() => navigate(-1)} disabled={loading}>
-                                            Cancel
-                                        </button>
-                                        <button type="submit" className="btn btn-primary px-4" disabled={loading || dataLoading}>
-                                            {loading ? (
-                                                <>
-                                                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                                    {isEditMode ? 'Updating...' : 'Publishing...'}
-                                                </>
-                                            ) : (isEditMode ? 'Update Article' : 'Publish Article')}
-                                        </button>
-                                    </div>
-                                </div>
+                                )}
+                                {activeTab === 'settings' && (
+                                    <button
+                                        type="submit"
+                                        className="btn btn-success btn-sm px-4"
+                                        disabled={loading || isLoading}
+                                    >
+                                        {loading ? (
+                                            <>
+                                                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                                Publishing...
+                                            </>
+                                        ) : (isEditMode ? 'Update Article' : 'Publish Article')}
+                                    </button>
+                                )}
                             </div>
-                        )}
-                    </form>
+                        </div>
+                    </div>
                 </div>
-            </div>
+            </form>
         </div>
     );
 }

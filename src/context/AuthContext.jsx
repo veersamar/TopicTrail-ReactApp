@@ -48,7 +48,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await axios.post(`https://localhost:7083/api/auth/login`, {
+      const response = await axios.post(`http://localhost:5064/api/auth/login`, {
         email,
         password
       });
@@ -146,7 +146,7 @@ export const AuthProvider = ({ children }) => {
 
       const baseUrl = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== 'undefined' && process.env.REACT_APP_API_URL.startsWith('http')
         ? process.env.REACT_APP_API_URL
-        : 'https://localhost:7083';
+        : 'http://localhost:5064';
 
       const response = await axios.post(`${baseUrl}/api/auth/register`, payload);
 

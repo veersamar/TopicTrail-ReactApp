@@ -12,6 +12,7 @@ import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
 import TagsPage from './pages/TagsPage';
 import CreateArticlePage from './pages/CreateArticlePage';
+import CreateQuestionPage from './pages/CreateQuestionPage';
 
 // Components
 // Components
@@ -90,6 +91,7 @@ function AppContent() {
         <Route path="/profile" element={<Profile />} />
         <Route path="/my-articles" element={<ArticlesFeed />} />
         <Route path="/create-article" element={<CreateArticlePage />} />
+        <Route path="/create-question" element={<CreateQuestionPage />} />
         <Route path="/edit-article/:id" element={<CreateArticlePage />} />
         <Route path="/tags" element={<TagsPage />} />
         <Route path="/users" element={<div className="p-4">Users (Coming Soon)</div>} />

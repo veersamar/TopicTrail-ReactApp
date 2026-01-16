@@ -16,7 +16,11 @@ function MainLayout() {
     const [isFocusMode, setIsFocusMode] = React.useState(false);
 
     const handleCreateClick = (type) => {
-        navigate(`/create-article?type=${type || 'post'}`);
+        if (type === 'question') {
+            navigate('/create-question');
+        } else {
+            navigate(`/create-article?type=${type || 'post'}`);
+        }
     };
 
     return (

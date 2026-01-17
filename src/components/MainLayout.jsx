@@ -18,6 +18,8 @@ function MainLayout() {
     const handleCreateClick = (type) => {
         if (type === 'question') {
             navigate('/create-question');
+        } else if (type === 'poll') {
+            navigate('/create-poll');
         } else {
             navigate(`/create-article?type=${type || 'post'}`);
         }

@@ -13,12 +13,13 @@ import NotFound from './pages/NotFound';
 import TagsPage from './pages/TagsPage';
 import CreateArticlePage from './pages/CreateArticlePage';
 import CreateQuestionPage from './pages/CreateQuestionPage';
+import CreatePollPage from './pages/CreatePollPage';
 
-// Components
 // Components
 import MainLayout from './components/MainLayout';
 import ArticlesFeed from './components/ArticlesFeed';
 import ArticleDetail from './components/ArticleDetail';
+import PollDetail from './components/PollDetail';
 
 // ========== PROTECTED ROUTE COMPONENT ==========
 function ProtectedRoute({ children }) {
@@ -88,10 +89,12 @@ function AppContent() {
         <Route path="/articles" element={<ArticlesFeed />} />
         <Route path="/questions" element={<ArticlesFeed />} /> {/* Alias for now */}
         <Route path="/articles/:id" element={<ArticleDetail />} />
+        <Route path="/poll/:id" element={<PollDetail />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/my-articles" element={<ArticlesFeed />} />
         <Route path="/create-article" element={<CreateArticlePage />} />
         <Route path="/create-question" element={<CreateQuestionPage />} />
+        <Route path="/create-poll" element={<CreatePollPage />} />
         <Route path="/edit-article/:id" element={<CreateArticlePage />} />
         <Route path="/tags" element={<TagsPage />} />
         <Route path="/users" element={<div className="p-4">Users (Coming Soon)</div>} />

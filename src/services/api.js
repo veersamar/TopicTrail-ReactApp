@@ -787,5 +787,159 @@ export const api = {
       console.error('Error fetching articles by tag:', error);
       return [];
     }
-  }
+  },
+
+  // ==================== POLL ENDPOINTS ====================
+
+  /**
+   * Create a new poll
+   * @param {string} token - Auth token
+   * @param {object} pollData - Poll creation data matching CreatePollRequest schema
+   * @returns {Promise<{success: boolean, pollId?: number, error?: string}>}
+   */
+  createPoll: async (token, pollData) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/polls`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(pollData),
+      });
+
+      const response = await handleResponse(res);
+      console.log('Create poll response:', response);
+
+      return {
+        success: response.success || response.status === 200 || response.status === 201,
+        pollId: response.pollId || response.PollId || response.id || response.Id,
+        error: response.error || response.message,
+        ...response,
+      };
+    } catch (error) {
+      console.error('Error creating poll:', error);
+      return {
+        success: false,
+        error: error.message || error.data?.message || 'Failed to create poll',
+        status: error.status,
+        data: error.data,
+      };
+    }
+  },
+
+  /**
+   * Get poll by ID (includes questions and options)
+   * @param {string} token - Auth token
+   * @param {number} pollId - Poll ID
+   * @returns {Promise<object|null>}
+   */
+  getPollById: async (token, pollId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/polls/${pollId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await handleResponse(res);
+      return data;
+    } catch (error) {
+      console.error('Error fetching poll:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Submit vote(s) for a poll
+   * @param {string} token - Auth token
+   * @param {object} voteData - Vote submission matching SubmitVoteRequest schema
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  submitPollVote: async (token, voteData) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/polls/votes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(voteData),
+      });
+
+      const response = await handleResponse(res);
+      console.log('Submit vote response:', response);
+
+      return {
+        success: response.success || response.status === 200 || response.status === 201,
+        error: response.error || response.message,
+        ...response,
+      };
+    } catch (error) {
+      console.error('Error submitting vote:', error);
+      return {
+        success: false,
+        error: error.message || error.data?.message || 'Failed to submit vote',
+        status: error.status,
+        data: error.data,
+      };
+    }
+  },
+
+  /**
+   * Get poll results (aggregated data)
+   * @param {string} token - Auth token
+   * @param {number} pollId - Poll ID
+   * @returns {Promise<{success: boolean, results?: object, error?: string}>}
+   */
+  getPollResults: async (token, pollId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/polls/results/${pollId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await handleResponse(res);
+      return {
+        success: true,
+        results: data,
+        ...data,
+      };
+    } catch (error) {
+      console.error('Error fetching poll results:', error);
+      // Handle 403 Forbidden - results not visible yet
+      if (error.status === 403) {
+        return {
+          success: false,
+          error: 'Results are not available yet',
+          forbidden: true,
+          status: error.status,
+        };
+      }
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch results',
+        status: error.status,
+      };
+    }
+  },
+
+  /**
+   * Check if user has already voted on a poll
+   * @param {string} token - Auth token  
+   * @param {number} pollId - Poll ID
+   * @param {number} userId - User ID
+   * @returns {Promise<{hasVoted: boolean, userAnswers?: object}>}
+   */
+  getUserPollVote: async (token, pollId, userId) => {
+    try {
+      // This would typically be returned as part of getPollById, but we check separately
+      const poll = await api.getPollById(token, pollId);
+      if (poll && poll.userVote) {
+        return {
+          hasVoted: true,
+          userAnswers: poll.userVote,
+        };
+      }
+      return { hasVoted: false };
+    } catch (error) {
+      console.error('Error checking user vote:', error);
+      return { hasVoted: false };
+    }
+  },
 };

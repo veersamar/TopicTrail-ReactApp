@@ -792,6 +792,29 @@ export const api = {
   // ==================== POLL ENDPOINTS ====================
 
   /**
+   * Get all polls (list endpoint)
+   * @param {string} token - Auth token
+   * @param {number} pageNumber - Page number (default 1)
+   * @returns {Promise<Array>} - List of polls
+   */
+  getAllPolls: async (token, pageNumber = 1) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/polls?pageNumber=${pageNumber}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await handleResponse(res);
+      console.log('Get all polls response:', data);
+      // Handle different response formats
+      return Array.isArray(data) ? data : 
+             Array.isArray(data.polls) ? data.polls : 
+             Array.isArray(data.data) ? data.data : [];
+    } catch (error) {
+      console.error('Error fetching polls:', error);
+      return [];
+    }
+  },
+
+  /**
    * Create a new poll
    * @param {string} token - Auth token
    * @param {object} pollData - Poll creation data matching CreatePollRequest schema

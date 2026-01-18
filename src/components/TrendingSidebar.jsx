@@ -6,21 +6,54 @@ import { api } from '../services/api';
 function TrendingSidebar() {
   const { token } = useAuth();
   const [trending, setTrending] = useState([]);
+  const [polls, setPolls] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [pollsLoading, setPollsLoading] = useState(true);
 
   useEffect(() => {
-    const fetchTrending = async () => {
+    const fetchData = async () => {
       try {
-        const data = await api.getTrendingArticles();
-        setTrending(data);
+        // Fetch trending articles
+        const trendingData = await api.getTrendingArticles();
+        setTrending(trendingData || []);
       } catch (e) {
         console.log("Failed to fetch trending", e);
       } finally {
         setLoading(false);
       }
     };
-    fetchTrending();
+    fetchData();
   }, []);
+
+  // Separate effect for fetching polls from dedicated Poll API
+  useEffect(() => {
+    const fetchPolls = async () => {
+      setPollsLoading(true);
+      try {
+        // Use dedicated Poll API endpoint
+        const pollsData = await api.getAllPolls(token);
+        console.log('Fetched polls for sidebar:', pollsData);
+        setPolls(Array.isArray(pollsData) ? pollsData : []);
+      } catch (e) {
+        console.log("Failed to fetch polls", e);
+        setPolls([]);
+      } finally {
+        setPollsLoading(false);
+      }
+    };
+    fetchPolls();
+  }, [token]);
+
+  // Get link for poll
+  const getPollLink = (poll) => {
+    const pollId = poll.id || poll.Id || poll.pollId || poll.PollId;
+    return `/poll/${pollId}`;
+  };
+
+  // Get link for article
+  const getArticleLink = (article) => {
+    return `/articles/${article.id || article.Id}`;
+  };
 
   return (
     <aside className="trending-sidebar w-100">
@@ -43,6 +76,50 @@ function TrendingSidebar() {
         </div>
       </div>
 
+      {/* Latest Polls Widget */}
+      <div className="card mb-3 border shadow-sm" style={{ borderColor: '#E0D4F7' }}>
+        <div className="card-header py-2 d-flex justify-content-between align-items-center" style={{ backgroundColor: '#F5F0FF' }}>
+          <h6 className="mb-0 small fw-bold" style={{ color: '#6B46C1' }}>
+            <i className="bi bi-bar-chart-fill me-1"></i>Latest Polls
+          </h6>
+          <Link to="/polls" className="small text-decoration-none" style={{ color: '#6B46C1' }}>
+            View All
+          </Link>
+        </div>
+        <div className="card-body p-0">
+          {pollsLoading ? (
+            <div className="p-3 text-center text-muted small">Loading...</div>
+          ) : (
+            <div className="list-group list-group-flush">
+              {polls.slice(0, 5).map((poll, idx) => (
+                <Link
+                  key={poll.id || poll.Id || poll.pollId || poll.PollId || idx}
+                  to={getPollLink(poll)}
+                  className="list-group-item list-group-item-action d-flex align-items-start gap-2 border-0 py-2"
+                >
+                  <i className="bi bi-ui-radios text-primary mt-1" style={{ fontSize: '0.8rem' }}></i>
+                  <div className="flex-grow-1">
+                    <span className="small text-secondary d-block text-truncate-2" style={{ lineHeight: '1.3' }}>
+                      {poll.title || poll.Title}
+                    </span>
+                    <small className="text-muted" style={{ fontSize: '0.7rem' }}>
+                      {poll.voteCount || poll.VoteCount || poll.totalVotes || 0} votes
+                    </small>
+                  </div>
+                </Link>
+              ))}
+              {polls.length === 0 && (
+                <div className="list-group-item border-0 small text-muted fst-italic text-center py-3">
+                  <i className="bi bi-bar-chart d-block mb-1" style={{ fontSize: '1.2rem' }}></i>
+                  No polls yet. 
+                  <Link to="/create-poll" className="d-block mt-1 text-primary">Create one!</Link>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Featured / Trending Widget */}
       <div className="card border shadow-sm">
         <div className="card-header bg-light py-2">
@@ -55,17 +132,10 @@ function TrendingSidebar() {
             <div className="list-group list-group-flush">
               {trending.slice(0, 5).map((article, idx) => (
                 <Link
-                  key={idx}
-                  to={`/articles/${article.id || article.Id}`}
+                  key={article.id || article.Id || idx}
+                  to={getArticleLink(article)}
                   className="list-group-item list-group-item-action d-flex align-items-start gap-2 border-0 py-2"
                 >
-                  <div className="mt-1 flex-shrink-0" style={{
-                    width: '16px',
-                    height: '16px',
-                    background: '#5effba', // bright green icon or customized
-                    borderRadius: '3px',
-                    display: 'none' // Hidden for standard look, or use icon
-                  }}></div>
                   <i className="bi bi-chat-square-text text-secondary mt-1" style={{ fontSize: '0.8rem' }}></i>
                   <span className="small text-secondary text-truncate-2" style={{ lineHeight: '1.3' }}>
                     {article.title || article.Title}

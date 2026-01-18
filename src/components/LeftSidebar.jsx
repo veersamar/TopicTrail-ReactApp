@@ -1,29 +1,27 @@
 import React from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 function LeftSidebar() {
     const location = useLocation();
     const query = new URLSearchParams(location.search);
     const currentType = query.get('type');
+    const isArticlesPage = location.pathname === '/articles';
 
     return (
         <nav className="left-sidebar pt-4 sticky-top" style={{ top: '60px', height: 'calc(100vh - 60px)', overflowY: 'auto' }}>
             <ul className="list-unstyled">
                 {/* Main Feeds */}
                 <li className="mb-2">
-                    <NavLink
+                    <Link
                         to="/articles"
-                        end
-                        className={({ isActive }) =>
-                            `d-block px-3 py-2 text-decoration-none small ${isActive && !currentType ? 'fw-bold text-dark border-end border-3 border-orange' : 'text-secondary'}`
-                        }
-                        style={({ isActive }) => ({
-                            backgroundColor: isActive && !currentType ? '#F1F2F3' : 'transparent',
-                            borderColor: isActive && !currentType ? 'var(--primary-color)' : 'transparent'
-                        })}
+                        className={`d-block px-3 py-2 text-decoration-none small ${isArticlesPage && !currentType ? 'fw-bold text-dark border-end border-3 border-orange' : 'text-secondary'}`}
+                        style={{
+                            backgroundColor: isArticlesPage && !currentType ? '#F1F2F3' : 'transparent',
+                            borderColor: isArticlesPage && !currentType ? 'var(--primary-color)' : 'transparent'
+                        }}
                     >
                         🏠 Home
-                    </NavLink>
+                    </Link>
                 </li>
 
                 <li className="mb-1 px-3 small text-uppercase text-muted fw-bold mt-3" style={{ fontSize: '0.75rem' }}>
@@ -31,28 +29,28 @@ function LeftSidebar() {
                 </li>
 
                 <li className="mb-0">
-                    <NavLink
+                    <Link
                         to="/articles?type=post"
-                        className={`d-flex align-items-center gap-2 px-3 py-2 text-decoration-none small ${currentType === 'post' ? 'fw-bold text-dark bg-light' : 'text-secondary'}`}
+                        className={`d-flex align-items-center gap-2 px-3 py-2 text-decoration-none small ${isArticlesPage && currentType === 'post' ? 'fw-bold text-dark bg-light border-end border-3 border-primary' : 'text-secondary'}`}
                     >
                         📝 Posts
-                    </NavLink>
+                    </Link>
                 </li>
                 <li className="mb-0">
-                    <NavLink
+                    <Link
                         to="/articles?type=question"
-                        className={`d-flex align-items-center gap-2 px-3 py-2 text-decoration-none small ${currentType === 'question' ? 'fw-bold text-dark bg-light' : 'text-secondary'}`}
+                        className={`d-flex align-items-center gap-2 px-3 py-2 text-decoration-none small ${isArticlesPage && currentType === 'question' ? 'fw-bold text-dark bg-light border-end border-3 border-primary' : 'text-secondary'}`}
                     >
                         ❓ Questions
-                    </NavLink>
+                    </Link>
                 </li>
                 <li className="mb-0">
-                    <NavLink
-                        to="/articles?type=poll"
-                        className={`d-flex align-items-center gap-2 px-3 py-2 text-decoration-none small ${currentType === 'poll' ? 'fw-bold text-dark bg-light' : 'text-secondary'}`}
+                    <Link
+                        to="/polls"
+                        className={`d-flex align-items-center gap-2 px-3 py-2 text-decoration-none small ${location.pathname === '/polls' ? 'fw-bold text-dark bg-light border-end border-3 border-primary' : 'text-secondary'}`}
                     >
                         📊 Polls
-                    </NavLink>
+                    </Link>
                 </li>
 
                 <li className="mb-1 px-3 small text-uppercase text-muted fw-bold mt-3" style={{ fontSize: '0.75rem' }}>
@@ -60,14 +58,20 @@ function LeftSidebar() {
                 </li>
 
                 <li>
-                    <NavLink to="/tags" className="d-block px-3 py-2 text-decoration-none small text-secondary">
+                    <Link 
+                        to="/tags" 
+                        className={`d-block px-3 py-2 text-decoration-none small ${location.pathname === '/tags' ? 'fw-bold text-dark bg-light' : 'text-secondary'}`}
+                    >
                         🏷️ Tags
-                    </NavLink>
+                    </Link>
                 </li>
                 <li>
-                    <NavLink to="/users" className="d-block px-3 py-2 text-decoration-none small text-secondary">
+                    <Link 
+                        to="/users" 
+                        className={`d-block px-3 py-2 text-decoration-none small ${location.pathname === '/users' ? 'fw-bold text-dark bg-light' : 'text-secondary'}`}
+                    >
                         👥 Users
-                    </NavLink>
+                    </Link>
                 </li>
             </ul>
         </nav>

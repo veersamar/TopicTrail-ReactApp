@@ -14,6 +14,7 @@ import TagsPage from './pages/TagsPage';
 import CreateArticlePage from './pages/CreateArticlePage';
 import CreateQuestionPage from './pages/CreateQuestionPage';
 import CreatePollPage from './pages/CreatePollPage';
+import PollsPage from './pages/PollsPage';
 
 // Components
 import MainLayout from './components/MainLayout';
@@ -90,6 +91,7 @@ function AppContent() {
         <Route path="/questions" element={<ArticlesFeed />} /> {/* Alias for now */}
         <Route path="/articles/:id" element={<ArticleDetail />} />
         <Route path="/poll/:id" element={<PollDetail />} />
+        <Route path="/polls" element={<PollsPage />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/my-articles" element={<ArticlesFeed />} />
         <Route path="/create-article" element={<CreateArticlePage />} />

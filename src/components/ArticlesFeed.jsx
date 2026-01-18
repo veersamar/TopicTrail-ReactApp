@@ -77,7 +77,7 @@ function ArticlesFeed() {
     };
 
     loadData();
-  }, [token, refreshTrigger, isMyArticles, user, tagFilter]);
+  }, [token, refreshTrigger, isMyArticles, user, userId, tagFilter, typeFilter, location.search]);
 
   // ========== FILTER & SORT ==========
   const filteredArticles = useMemo(() => {
@@ -85,15 +85,22 @@ function ArticlesFeed() {
 
     // Filter by Type (URL param)
     if (typeFilter) {
+      console.log('Filtering by type:', typeFilter, 'Available types:', articleTypes);
       const targetType = articleTypes.find(t =>
         (t.name || t.Name || '').toLowerCase() === typeFilter.toLowerCase()
       );
+      console.log('Target type found:', targetType);
       if (targetType) {
         const typeId = targetType.id || targetType.Id || targetType.value || targetType.Value;
+        console.log('Target type ID:', typeId);
         filtered = filtered.filter(a => {
           const aType = a.articleType || a.ArticleType;
-          return parseInt(aType, 10) === parseInt(typeId, 10);
+          const matches = parseInt(aType, 10) === parseInt(typeId, 10);
+          return matches;
         });
+        console.log('Filtered articles count:', filtered.length);
+      } else {
+        console.warn('Type not found in articleTypes for filter:', typeFilter);
       }
     }
 
@@ -164,7 +171,12 @@ function ArticlesFeed() {
       <div className="d-flex flex-column border-top">
         {filteredArticles.length > 0 ? (
           filteredArticles.map(article => (
-            <ArticleCard key={article.id || article.Id || Math.random()} article={article} isAssumedOwner={isMyArticles} />
+            <ArticleCard 
+              key={article.id || article.Id || Math.random()} 
+              article={article} 
+              isAssumedOwner={isMyArticles}
+              articleTypes={articleTypes}
+            />
           ))
         ) : (
           <div className="py-5 text-center text-muted">

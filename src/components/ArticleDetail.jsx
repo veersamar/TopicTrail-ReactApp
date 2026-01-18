@@ -66,6 +66,14 @@ function ArticleDetail() {
 
       console.log('Article fetched:', article);
 
+      // Check if this is a poll article - redirect to poll page
+      const articleTypeName = article.articleTypeName || article.ArticleTypeName || '';
+      const pollId = article.pollId || article.PollId;
+      if (articleTypeName.toLowerCase() === 'poll' && pollId) {
+        navigate(`/poll/${pollId}`, { replace: true });
+        return;
+      }
+
       // Fetch comments for this article
       const commentsData = await api.getComments(token, id);
       const commentsList = Array.isArray(commentsData?.comments) ? commentsData.comments : [];
@@ -94,7 +102,7 @@ function ArticleDetail() {
         loading: false,
       }));
     }
-  }, [id, token]);
+  }, [id, token, navigate]);
 
   // ========== HANDLE LIKE ==========
   // ✅ FIX: Remove 'article' from dependency array - use pageState.article instead

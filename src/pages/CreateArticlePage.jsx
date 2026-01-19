@@ -371,7 +371,12 @@ function CreateArticlePage() {
                             // Use setTimeout to make the confirm non-blocking
                             setTimeout(() => {
                                 if (window.confirm("Found a saved draft. Would you like to restore it?")) {
-                                    setFormData(prev => ({ ...prev, ...parsed }));
+                                    // Restore draft but preserve the correct articleType from master data
+                                    setFormData(prev => ({ 
+                                        ...prev, 
+                                        ...parsed,
+                                        articleType: selectedArticleType || prev.articleType // Always use correct type ID
+                                    }));
                                 } else {
                                     localStorage.removeItem('topic_trail_article_draft');
                                 }
@@ -382,6 +387,13 @@ function CreateArticlePage() {
                         localStorage.removeItem('topic_trail_article_draft');
                     }
                 }
+            }
+
+            // Re-ensure article type is set after any draft restore (redundant but safe)
+            if (selectedArticleType && !isEditMode) {
+                setTimeout(() => {
+                    setFormData(prev => ({ ...prev, articleType: selectedArticleType }));
+                }, 150);
             }
         } catch (error) {
             console.error('Error loading form data:', error);
@@ -916,13 +928,19 @@ function CreateArticlePage() {
             // Append metadata at the end of content
             const finalContent = joinedContent + `<!-- METADATA: ${JSON.stringify({ pageTitles })} -->`;
 
+            // Get the correct article type ID from master data (fallback to formData.articleType)
+            const targetType = formState.articleTypes.find(t =>
+                (t.name || t.Name || '').toLowerCase() === articleTypeParam.toLowerCase()
+            );
+            const articleTypeId = targetType ? (targetType.id || targetType.Id || targetType.value || targetType.Value) : formData.articleType;
+
             const articleData = {
                 Title: formData.title.trim(),
                 Description: formData.description?.trim() || null,
                 Content: finalContent,
                 CategoryId: parseInt(formData.categoryId, 10),
                 SubCategoryId: formData.subCategoryId ? parseInt(formData.subCategoryId, 10) : null,
-                ArticleType: parseInt(formData.articleType, 10),
+                ArticleType: parseInt(articleTypeId, 10), // Always use correct type from master data
                 IntentType: formData.intentType ? parseInt(formData.intentType, 10) : null,
                 AudienceTypes: formData.audienceTypes.length > 0 ? formData.audienceTypes.map(id => parseInt(id, 10)) : null,
                 Tags: formData.tags.length > 0 ? formData.tags : ['general'],
@@ -931,6 +949,7 @@ function CreateArticlePage() {
             };
 
             console.log('Submitting article data:', articleData);
+            console.log('Article Type ID from master data:', articleTypeId, 'formData.articleType:', formData.articleType);
 
             let result;
             let articleId;

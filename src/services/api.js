@@ -163,6 +163,28 @@ export const api = {
     }
   },
 
+  /**
+   * Get articles by article type (Post, Question, etc.)
+   * @param {string} token - Auth token
+   * @param {number} articleTypeId - Article type ID (e.g., 13 for Post, 15 for Question)
+   * @param {number} pageNumber - Page number (default 1)
+   * @param {number} pageSize - Page size (default 20)
+   * @returns {Promise<Array>} - List of articles
+   */
+  getArticlesByType: async (token, articleTypeId, pageNumber = 1, pageSize = 20) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/Article/type/${articleTypeId}?pageNumber=${pageNumber}&pageSize=${pageSize}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await handleResponse(res);
+      console.log('getArticlesByType response:', data);
+      return Array.isArray(data.articles) ? data.articles : (Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching articles by type:', error);
+      return [];
+    }
+  },
+
   getTrendingArticles: async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/article/trending`);

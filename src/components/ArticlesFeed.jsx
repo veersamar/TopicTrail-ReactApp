@@ -31,7 +31,13 @@ function ArticlesFeed() {
       setLoading(true);
       setError(null);
       try {
-        console.log('ArticlesFeed loading data. Path:', location.pathname, 'isMyArticles:', isMyArticles, 'User:', user, 'UserId:', userId);
+        console.log('ArticlesFeed loading data. Path:', location.pathname, 'isMyArticles:', isMyArticles, 'typeFilter:', typeFilter, 'User:', user, 'UserId:', userId);
+
+        // First fetch article types to get the type ID for filtering
+        const fetchedTypes = await api.getMasterDataByType('ArticleType');
+        if (Array.isArray(fetchedTypes)) {
+          setArticleTypes(fetchedTypes);
+        }
 
         // Determine which API call to make
         let articlesPromise;
@@ -46,27 +52,31 @@ function ArticlesFeed() {
         } else if (tagFilter) {
           console.log('Fetching articles for tag:', tagFilter);
           articlesPromise = api.getArticlesByTag(token, tagFilter);
+        } else if (typeFilter && fetchedTypes) {
+          // Use the dedicated type endpoint for Posts and Questions
+          const targetType = fetchedTypes.find(t =>
+            (t.name || t.Name || '').toLowerCase() === typeFilter.toLowerCase()
+          );
+          if (targetType) {
+            const typeId = targetType.id || targetType.Id || targetType.value || targetType.Value;
+            console.log('Fetching articles by type:', typeFilter, 'TypeId:', typeId);
+            articlesPromise = api.getArticlesByType(token, typeId);
+          } else {
+            console.log('Type not found, fetching all articles');
+            articlesPromise = token ? api.getArticles(token) : Promise.resolve([]);
+          }
         } else {
           console.log('Fetching ALL articles');
           articlesPromise = token ? api.getArticles(token) : Promise.resolve([]);
         }
 
-        // Fetch articles and types in parallel
-        const [fetchedArticles, fetchedTypes] = await Promise.all([
-          articlesPromise,
-          api.getMasterDataByType('ArticleType')
-        ]);
-
+        const fetchedArticles = await articlesPromise;
         console.log('Fetched articles:', fetchedArticles);
 
         if (Array.isArray(fetchedArticles)) {
           setArticles(fetchedArticles);
         } else {
           setArticles([]);
-        }
-
-        if (Array.isArray(fetchedTypes)) {
-          setArticleTypes(fetchedTypes);
         }
       } catch (err) {
         console.error('Error loading feed:', err);
@@ -80,42 +90,23 @@ function ArticlesFeed() {
   }, [token, refreshTrigger, isMyArticles, user, userId, tagFilter, typeFilter, location.search]);
 
   // ========== FILTER & SORT ==========
+  // Note: Type filtering is now done by the API via getArticlesByType
+  // This useMemo now only handles sorting and the unanswered filter
   const filteredArticles = useMemo(() => {
     let filtered = [...articles];
 
-    // Filter by Type (URL param)
-    if (typeFilter) {
-      console.log('Filtering by type:', typeFilter, 'Available types:', articleTypes);
-      const targetType = articleTypes.find(t =>
-        (t.name || t.Name || '').toLowerCase() === typeFilter.toLowerCase()
-      );
-      console.log('Target type found:', targetType);
-      if (targetType) {
-        const typeId = targetType.id || targetType.Id || targetType.value || targetType.Value;
-        console.log('Target type ID:', typeId);
-        filtered = filtered.filter(a => {
-          const aType = a.articleType || a.ArticleType;
-          const matches = parseInt(aType, 10) === parseInt(typeId, 10);
-          return matches;
-        });
-        console.log('Filtered articles count:', filtered.length);
-      } else {
-        console.warn('Type not found in articleTypes for filter:', typeFilter);
-      }
-    }
-
     // Sort logic
     if (filterMode === 'newest') {
-      filtered.sort((a, b) => new Date(b.createdDate) - new Date(a.createdDate));
+      filtered.sort((a, b) => new Date(b.createdDate || b.CreatedDate) - new Date(a.createdDate || a.CreatedDate));
     } else if (filterMode === 'active') {
-      // Mock "active" by recently updated or viewed
-      filtered.sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0));
+      // Sort by most viewed
+      filtered.sort((a, b) => (b.viewCount || b.ViewCount || 0) - (a.viewCount || a.ViewCount || 0));
     } else if (filterMode === 'unanswered') {
-      filtered = filtered.filter(a => (a.commentCount || 0) === 0);
+      filtered = filtered.filter(a => (a.commentCount || a.CommentCount || 0) === 0);
     }
 
     return filtered;
-  }, [articles, filterMode, typeFilter, articleTypes]);
+  }, [articles, filterMode]);
 
   const getPageTitle = () => {
     if (isMyArticles) return 'My Articles';

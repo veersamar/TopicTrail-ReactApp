@@ -222,11 +222,6 @@ function CreateQuestionPage() {
                 masterDataLoading: false,
             }));
 
-            // Auto-set article type to 'question'
-            if (questionTypeId) {
-                setFormData(prev => ({ ...prev, articleType: questionTypeId }));
-            }
-
             // Load draft from localStorage (non-blocking)
             const savedDraft = localStorage.getItem('topic_trail_question_draft');
             if (savedDraft) {
@@ -240,7 +235,12 @@ function CreateQuestionPage() {
                         // Use setTimeout to make the confirm non-blocking
                         setTimeout(() => {
                             if (window.confirm("Found a saved question draft. Would you like to restore it?")) {
-                                setFormData(prev => ({ ...prev, ...parsed }));
+                                // Restore draft but always use the correct articleType from master data
+                                setFormData(prev => ({ 
+                                    ...prev, 
+                                    ...parsed,
+                                    articleType: questionTypeId || prev.articleType // Always use correct Question type ID
+                                }));
                                 if (parsed.pages?.[0]?.content) {
                                     setShowDetails(true);
                                 }
@@ -253,6 +253,11 @@ function CreateQuestionPage() {
                     console.error("Failed to parse draft", e);
                     localStorage.removeItem('topic_trail_question_draft');
                 }
+            }
+
+            // Always set article type to 'question' (after draft restore check to ensure correct value)
+            if (questionTypeId) {
+                setFormData(prev => ({ ...prev, articleType: questionTypeId }));
             }
         } catch (error) {
             console.error('Error loading form data:', error);
@@ -613,13 +618,19 @@ function CreateQuestionPage() {
             // Combine details content (if any)
             const detailsContent = showDetails ? formData.pages.map(p => p.content).join('<!-- PAGE_BREAK -->') : '';
 
+            // Get the correct Question type ID from master data (fallback to formData.articleType)
+            const questionType = formState.articleTypes.find(t =>
+                (t.name || t.Name || '').toLowerCase() === 'question'
+            );
+            const questionTypeId = questionType ? (questionType.id || questionType.Id || questionType.value || questionType.Value) : formData.articleType;
+
             const articleData = {
                 Title: formData.title.trim(),
                 Description: null, // Questions don't have descriptions
                 Content: detailsContent || '<p></p>', // Minimal content if no details
                 CategoryId: parseInt(formData.categoryId, 10),
                 SubCategoryId: formData.subCategoryId ? parseInt(formData.subCategoryId, 10) : null,
-                ArticleType: parseInt(formData.articleType, 10),
+                ArticleType: parseInt(questionTypeId, 10), // Always use Question type from master data
                 IntentType: null, // Questions don't have intent
                 AudienceTypes: formData.audienceTypes.length > 0 ? formData.audienceTypes.map(id => parseInt(id, 10)) : null,
                 Tags: formData.tags.length > 0 ? formData.tags : ['question'],
@@ -627,6 +638,7 @@ function CreateQuestionPage() {
             };
 
             console.log('Submitting question data:', articleData);
+            console.log('Question Type ID from master data:', questionTypeId, 'formData.articleType:', formData.articleType);
 
             const result = await api.createArticle(token, userId, articleData);
             const articleId = result.id || result.articleId;

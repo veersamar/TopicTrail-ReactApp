@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import AttachmentsSection from './AttachmentsSection';
+import ArticleReactions from './ArticleReactions';
+import CommentList from './CommentList';
 import 'react-quill-new/dist/quill.snow.css';
 
 function ArticleDetail() {
@@ -18,13 +20,10 @@ function ArticleDetail() {
     article: null,
     loading: true,
     error: null,
-    liked: false,
     likeCount: 0,
-    showComments: true,
+    dislikeCount: 0,
+    userReaction: null,
     comments: [],
-    newComment: '',
-    commentLoading: false,
-    submittingComment: false,
   });
 
   const [activePage, setActivePage] = useState(0);
@@ -74,15 +73,22 @@ function ArticleDetail() {
         return;
       }
 
-      // Fetch comments for this article
-      const commentsData = await api.getComments(token, id);
-      const commentsList = Array.isArray(commentsData?.comments) ? commentsData.comments : [];
+      // Fetch comments for this article (with userId for reaction data)
+      const commentsData = await api.getComments(token, id, userId);
+      const commentsList = Array.isArray(commentsData?.comments) 
+        ? commentsData.comments 
+        : (Array.isArray(commentsData?.Comments) ? commentsData.Comments : []);
+
+      // Fetch article reactions summary
+      const reactions = await api.getArticleReactions(token, id, userId);
 
       setPageState(prev => ({
         ...prev,
         article,
         comments: commentsList,
-        likeCount: article.likeCount || article.LikeCount || article.article?.likeCount || article.article?.LikeCount || 0,
+        likeCount: reactions.likeCount ?? article.likeCount ?? article.LikeCount ?? 0,
+        dislikeCount: reactions.dislikeCount ?? article.dislikeCount ?? article.DislikeCount ?? 0,
+        userReaction: reactions.currentUserReaction ?? article.currentUserReaction ?? article.CurrentUserReaction ?? null,
         loading: false,
       }));
 
@@ -102,145 +108,38 @@ function ArticleDetail() {
         loading: false,
       }));
     }
-  }, [id, token, navigate]);
+  }, [id, token, userId, navigate]);
 
-  // ========== HANDLE LIKE ==========
-  // ✅ FIX: Remove 'article' from dependency array - use pageState.article instead
-  const handleLike = useCallback(async () => {
-    setPageState(prev => {
-      if (!prev.article || !token || !userId) return prev;
-
-      const newLiked = !prev.liked;
-
-      (async () => {
-        try {
-          if (newLiked) {
-            await api.likeArticle(token, id, userId);
-          } else {
-            await api.unlikeArticle(token, id, userId);
-          }
-        } catch (error) {
-          console.error('Like error:', error);
-          setPageState(p => ({
-            ...p,
-            error: 'Failed to update like',
-          }));
-        }
-      })();
-
-      return {
-        ...prev,
-        liked: newLiked,
-        likeCount: newLiked ? prev.likeCount + 1 : Math.max(0, prev.likeCount - 1),
-      };
-    });
-  }, [id, token, userId]); // ✅ FIX: Removed 'article' and 'pageState.liked'
-
-  // Guard against double comment submission in StrictMode
-  const isSubmittingComment = useRef(false);
-
-  // ========== HANDLE ADD COMMENT ==========
-  const handleAddComment = useCallback(async (e) => {
-    e.preventDefault();
-
-    // Prevent double submission
-    if (isSubmittingComment.current) return;
-
-    const commentText = pageState.newComment.trim();
-
-    if (!commentText) {
-      setPageState(prev => ({ ...prev, error: 'Comment cannot be empty' }));
-      return;
-    }
-
-    if (!userId) {
-      setPageState(prev => ({ ...prev, error: 'Please log in to comment' }));
-      return;
-    }
-
-    isSubmittingComment.current = true;
-    setPageState(prev => ({ ...prev, submittingComment: true, error: null }));
-
-    try {
-      const result = await api.createComment(token, id, commentText, userId);
-      console.log('Comment creation result:', result);
-
-      if (result.success) {
-        const commentObj = {
-          id: result.id || Math.random(),
-          content: commentText,
-          creator: { name: result.creatorName || 'You', id: userId },
-          createdDate: new Date().toISOString(),
-          likeCount: 0,
-        };
-
-        setPageState(prev => ({
-          ...prev,
-          comments: [commentObj, ...prev.comments],
-          newComment: '',
-          submittingComment: false,
-          error: null,
-        }));
-      } else {
-        setPageState(prev => ({
-          ...prev,
-          error: result.error || 'Failed to add comment',
-          submittingComment: false,
-        }));
-      }
-    } catch (error) {
-      console.error('Error adding comment:', error);
-      setPageState(prev => ({
-        ...prev,
-        error: error.message || 'Failed to add comment',
-        submittingComment: false,
-      }));
-    } finally {
-      isSubmittingComment.current = false;
-    }
-  }, [token, id, userId, pageState.newComment]);
-
-  // ========== HANDLE DELETE COMMENT ==========
-  const handleDeleteComment = useCallback(async (commentId) => {
-    if (!window.confirm('Delete this comment?')) return;
-
-    try {
-      await api.deleteComment(token, commentId);
-
-      setPageState(prev => ({
-        ...prev,
-        comments: prev.comments.filter(c => c.id !== commentId),
-        error: null,
-      }));
-    } catch (error) {
-      console.error('Error deleting comment:', error);
-      setPageState(prev => ({
-        ...prev,
-        error: 'Failed to delete comment',
-      }));
-    }
-  }, [token]);
+  // ========== HANDLE ERROR ==========
+  const handleError = useCallback((errorMessage) => {
+    setPageState(prev => ({ ...prev, error: errorMessage }));
+    // Auto-clear error after 5 seconds
+    setTimeout(() => {
+      setPageState(prev => ({ ...prev, error: null }));
+    }, 5000);
+  }, []);
 
   // ========== SAFE PROPERTY ACCESSORS ==========
-  const getTitle = () => pageState.article?.title || pageState.article?.article.Title || 'Untitled';
+  const getTitle = () => pageState.article?.title || pageState.article?.article?.Title || pageState.article?.Title || 'Untitled';
 
   const getContent = () =>
-    pageState.article?.content || pageState.article?.article.Content || 'No content available';
+    pageState.article?.content || pageState.article?.article?.Content || pageState.article?.Content || 'No content available';
 
+  // eslint-disable-next-line no-unused-vars
   const getDescription = () =>
-    pageState.article?.description || pageState.article?.article.Description || '';
+    pageState.article?.description || pageState.article?.article?.Description || pageState.article?.Description || '';
 
   const getCategory = () =>
-    pageState.article?.categoryName || pageState.article?.article.CategoryName || 'General';
+    pageState.article?.categoryName || pageState.article?.article?.CategoryName || pageState.article?.CategoryName || 'General';
 
   const getCreatorName = () =>
-    pageState.article?.creatorName || pageState.article?.article.CreatorName || 'Anonymous';
+    pageState.article?.creatorName || pageState.article?.article?.CreatorName || pageState.article?.CreatorName || 'Anonymous';
 
   const getCreatorEmail = () =>
     pageState.article?.creatorEmail || pageState.article?.CreatorEmail || '';
 
   const getCreatedDate = () => {
-    const dateStr = pageState.article?.createdDate || pageState.article?.article.CreatedDate;
+    const dateStr = pageState.article?.createdDate || pageState.article?.article?.CreatedDate || pageState.article?.CreatedDate;
     if (!dateStr) return 'Unknown date';
 
     try {
@@ -256,36 +155,18 @@ function ArticleDetail() {
 
   const getViewCount = () => pageState.article?.viewCount || pageState.article?.ViewCount || pageState.article?.article?.viewCount || pageState.article?.article?.ViewCount || 0;
 
-  const getArticleType = () => pageState.article?.articleType || '';
-  const getIntentType = () => pageState.article?.intentType || '';
-  const getAudienceType = () => pageState.article?.audienceType || '';
-  const getTags = () => pageState.article?.tags || '';
-
-  // ========== FORMAT COMMENT DATE ==========
-  const formatCommentDate = (dateStr) => {
-    if (!dateStr) return 'Just now';
-
-    try {
-      const date = new Date(dateStr);
-      const now = new Date();
-      const diffMs = now - date;
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
-
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffHours < 24) return `${diffHours}h ago`;
-      if (diffDays < 7) return `${diffDays}d ago`;
-
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } catch {
-      return 'Unknown date';
-    }
+  const getArticleType = () => pageState.article?.articleType || pageState.article?.ArticleType || '';
+  const getIntentType = () => pageState.article?.intentType || pageState.article?.IntentType || '';
+  const getAudienceType = () => pageState.article?.audienceType || pageState.article?.AudienceType || '';
+  const getTags = () => {
+    const tags = pageState.article?.tags || pageState.article?.Tags;
+    if (!tags) return [];
+    if (Array.isArray(tags)) return tags;
+    if (typeof tags === 'string') return tags.split(',').map(t => t.trim()).filter(t => t);
+    return [];
   };
 
-  const { article, loading, error, liked, likeCount, comments, newComment, submittingComment } =
-    pageState;
+  const { article, loading, error, likeCount, dislikeCount, userReaction, comments } = pageState;
 
   // ========== RENDER LOADING STATE ==========
   if (loading) {
@@ -304,7 +185,7 @@ function ArticleDetail() {
   }
 
   // ========== RENDER ERROR STATE ==========
-  if (error || !article) {
+  if (!article && !loading) {
     return (
       <div className="container-lg my-5" style={{ maxWidth: '900px' }}>
         <button
@@ -436,11 +317,11 @@ function ArticleDetail() {
         {/* Footer Area */}
         <footer className="blog-footer">
           {/* Tags */}
-          {getTags() && (
+          {getTags().length > 0 && (
             <div className="mb-4 d-flex flex-wrap gap-2">
-              {getTags().split(',').map((tag, idx) => (
+              {getTags().map((tag, idx) => (
                 <span key={idx} className="badge bg-light text-secondary border p-2 fw-normal">
-                  #{tag.trim()}
+                  #{typeof tag === 'string' ? tag.trim() : tag}
                 </span>
               ))}
             </div>
@@ -448,14 +329,15 @@ function ArticleDetail() {
 
           {/* Actions */}
           <div className="d-flex align-items-center justify-content-between mt-4 mb-5">
-            <div className="d-flex gap-3">
-              <button
-                className={`btn ${liked ? 'btn-danger' : 'btn-outline-danger'} rounded-pill px-4`}
-                onClick={handleLike}
-              >
-                <i className={`bi ${liked ? 'bi-heart-fill' : 'bi-heart'} me-2`}></i>
-                {liked ? 'Liked' : 'Like'} ({likeCount})
-              </button>
+            <div className="d-flex gap-3 align-items-center">
+              {/* Article Reactions (Like/Dislike) */}
+              <ArticleReactions
+                articleId={parseInt(id)}
+                initialLikeCount={likeCount}
+                initialDislikeCount={dislikeCount}
+                initialUserReaction={userReaction}
+                onError={handleError}
+              />
               <button className="btn btn-outline-secondary rounded-pill px-4">
                 <i className="bi bi-share me-2"></i> Share
               </button>
@@ -497,80 +379,12 @@ function ArticleDetail() {
         </footer>
       </article>
 
-      {/* Comments Section */}
-      <div className="mt-5 pt-4 border-top">
-        <div className="d-flex align-items-center justify-content-between mb-4">
-          <h3 className="fw-bold m-0">Comments ({comments.length})</h3>
-          <button
-            className="btn btn-link text-decoration-none"
-            onClick={() => setPageState(prev => ({ ...prev, showComments: !prev.showComments }))}
-          >
-            {pageState.showComments ? 'Hide Comments' : 'Show Comments'}
-          </button>
-        </div>
-
-        {pageState.showComments && (
-          <div className="animate__animated animate__fadeIn">
-            {userId ? (
-              <form onSubmit={handleAddComment} className="mb-5">
-                <textarea
-                  className="form-control mb-3"
-                  placeholder="Join the discussion..."
-                  value={newComment}
-                  onChange={(e) => setPageState(prev => ({ ...prev, newComment: e.target.value }))}
-                  disabled={submittingComment}
-                  rows="3"
-                />
-                <button
-                  type="submit"
-                  className="btn btn-primary rounded-pill px-4"
-                  disabled={submittingComment || !newComment.trim()}
-                >
-                  {submittingComment ? 'Posting...' : 'Post Comment'}
-                </button>
-              </form>
-            ) : (
-              <div className="alert alert-light border mb-4">
-                Please <a href="/login">log in</a> to join the discussion.
-              </div>
-            )}
-
-            <div className="comments-list">
-              {comments.length > 0 ? (
-                comments.map((comment) => (
-                  <div key={comment.id} className="d-flex gap-3 mb-4">
-                    <div
-                      className="flex-shrink-0 d-flex align-items-center justify-content-center rounded-circle bg-light text-secondary"
-                      style={{ width: '40px', height: '40px', fontSize: '1.2rem' }}
-                    >
-                      <i className="bi bi-person"></i>
-                    </div>
-                    <div className="flex-grow-1">
-                      <div className="d-flex align-items-center mb-1">
-                        <span className="fw-bold me-2">{comment.creator?.name || comment.Creator?.Name || 'Anonymous'}</span>
-                        <small className="text-muted">{formatCommentDate(comment.createdDate || comment.CreatedDate)}</small>
-                        {userId && parseInt(userId) === (comment.creator?.id || comment.Creator?.Id) && (
-                          <button
-                            className="btn btn-link btn-sm text-danger p-0 ms-auto"
-                            onClick={() => handleDeleteComment(comment.id || comment.Id)}
-                          >
-                            <i className="bi bi-trash"></i>
-                          </button>
-                        )}
-                      </div>
-                      <div className="text-dark">
-                        {comment.content || comment.Content}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-muted fst-italic">No comments yet.</p>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Comments Section - Using CommentList component */}
+      <CommentList
+        articleId={parseInt(id)}
+        initialComments={comments}
+        onError={handleError}
+      />
     </div >
   );
 }

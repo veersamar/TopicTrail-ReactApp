@@ -313,7 +313,96 @@ export const api = {
     }
   },
 
-  // ==================== LIKE ENDPOINTS ====================
+  // ==================== ARTICLE REACTION ENDPOINTS ====================
+  /**
+   * React to an article (Like or Dislike)
+   * @param {string} token - Auth token
+   * @param {number} articleId - Article ID
+   * @param {string} reactionType - 'Like' or 'Dislike'
+   * @param {number} userId - User ID
+   * @returns {Promise<{success: boolean, likeCount: number, dislikeCount: number, userReaction: string|null}>}
+   */
+  reactToArticle: async (token, articleId, reactionType, userId) => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/articles/${articleId}/reactions/${reactionType}?userId=${userId}`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      const response = await handleResponse(res);
+      return {
+        success: response.success || response.Success || res.ok,
+        likeCount: response.likeCount ?? response.LikeCount ?? 0,
+        dislikeCount: response.dislikeCount ?? response.DislikeCount ?? 0,
+        userReaction: response.userReaction ?? response.UserReaction ?? null,
+        ...response,
+      };
+    } catch (error) {
+      console.error('Error reacting to article:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
+   * Remove reaction from an article
+   * @param {string} token - Auth token
+   * @param {number} articleId - Article ID
+   * @param {number} userId - User ID
+   * @returns {Promise<{success: boolean, likeCount: number, dislikeCount: number}>}
+   */
+  removeArticleReaction: async (token, articleId, userId) => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/articles/${articleId}/reactions?userId=${userId}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      const response = await handleResponse(res);
+      return {
+        success: response.success || response.Success || res.ok,
+        likeCount: response.likeCount ?? response.LikeCount ?? 0,
+        dislikeCount: response.dislikeCount ?? response.DislikeCount ?? 0,
+        userReaction: null,
+        ...response,
+      };
+    } catch (error) {
+      console.error('Error removing article reaction:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
+   * Get reaction summary for an article
+   * @param {string} token - Auth token
+   * @param {number} articleId - Article ID
+   * @param {number} userId - User ID (optional)
+   * @returns {Promise<{likeCount: number, dislikeCount: number, currentUserReaction: string|null}>}
+   */
+  getArticleReactions: async (token, articleId, userId) => {
+    try {
+      const url = userId 
+        ? `${API_BASE_URL}/api/articles/${articleId}/reactions?userId=${userId}`
+        : `${API_BASE_URL}/api/articles/${articleId}/reactions`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const response = await handleResponse(res);
+      return {
+        likeCount: response.likeCount ?? response.LikeCount ?? 0,
+        dislikeCount: response.dislikeCount ?? response.DislikeCount ?? 0,
+        currentUserReaction: response.currentUserReaction ?? response.CurrentUserReaction ?? null,
+      };
+    } catch (error) {
+      console.error('Error getting article reactions:', error);
+      return { likeCount: 0, dislikeCount: 0, currentUserReaction: null };
+    }
+  },
+
+  // Legacy like/unlike methods (kept for backwards compatibility)
   likeArticle: async (token, articleId, userId) => {
     try {
       const res = await fetch(
@@ -351,6 +440,118 @@ export const api = {
     } catch (error) {
       console.error('Error unliking article:', error);
       return { success: false, error: error.message };
+    }
+  },
+
+  // ==================== COMMENT REACTION ENDPOINTS ====================
+  /**
+   * React to a comment (Like or Dislike)
+   * @param {string} token - Auth token
+   * @param {number} commentId - Comment ID
+   * @param {string} reactionType - 'Like' or 'Dislike'
+   * @param {number} userId - User ID
+   * @returns {Promise<{success: boolean, likeCount: number, dislikeCount: number, userReaction: string|null}>}
+   */
+  reactToComment: async (token, commentId, reactionType, userId) => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/comments/${commentId}/reactions/${reactionType}?userId=${userId}`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      const response = await handleResponse(res);
+      return {
+        success: response.success || response.Success || res.ok,
+        likeCount: response.likeCount ?? response.LikeCount ?? 0,
+        dislikeCount: response.dislikeCount ?? response.DislikeCount ?? 0,
+        userReaction: response.userReaction ?? response.UserReaction ?? null,
+        ...response,
+      };
+    } catch (error) {
+      console.error('Error reacting to comment:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
+   * Remove reaction from a comment
+   * @param {string} token - Auth token
+   * @param {number} commentId - Comment ID
+   * @param {number} userId - User ID
+   * @returns {Promise<{success: boolean, likeCount: number, dislikeCount: number}>}
+   */
+  removeCommentReaction: async (token, commentId, userId) => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/comments/${commentId}/reactions?userId=${userId}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      const response = await handleResponse(res);
+      return {
+        success: response.success || response.Success || res.ok,
+        likeCount: response.likeCount ?? response.LikeCount ?? 0,
+        dislikeCount: response.dislikeCount ?? response.DislikeCount ?? 0,
+        userReaction: null,
+        ...response,
+      };
+    } catch (error) {
+      console.error('Error removing comment reaction:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
+   * Get reaction summary for a comment
+   * @param {string} token - Auth token
+   * @param {number} commentId - Comment ID
+   * @param {number} userId - User ID (optional)
+   * @returns {Promise<{likeCount: number, dislikeCount: number, currentUserReaction: string|null}>}
+   */
+  getCommentReactions: async (token, commentId, userId) => {
+    try {
+      const url = userId 
+        ? `${API_BASE_URL}/api/comments/${commentId}/reactions?userId=${userId}`
+        : `${API_BASE_URL}/api/comments/${commentId}/reactions`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const response = await handleResponse(res);
+      return {
+        likeCount: response.likeCount ?? response.LikeCount ?? 0,
+        dislikeCount: response.dislikeCount ?? response.DislikeCount ?? 0,
+        currentUserReaction: response.currentUserReaction ?? response.CurrentUserReaction ?? null,
+      };
+    } catch (error) {
+      console.error('Error getting comment reactions:', error);
+      return { likeCount: 0, dislikeCount: 0, currentUserReaction: null };
+    }
+  },
+
+  /**
+   * Get batch comment reactions
+   * @param {string} token - Auth token
+   * @param {number[]} commentIds - Array of comment IDs
+   * @param {number} userId - User ID (optional)
+   * @returns {Promise<Object>} - Map of commentId to reaction data
+   */
+  getBatchCommentReactions: async (token, commentIds, userId) => {
+    try {
+      const url = userId 
+        ? `${API_BASE_URL}/api/comments/reactions/batch?commentIds=${commentIds.join(',')}&userId=${userId}`
+        : `${API_BASE_URL}/api/comments/reactions/batch?commentIds=${commentIds.join(',')}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const response = await handleResponse(res);
+      return response;
+    } catch (error) {
+      console.error('Error getting batch comment reactions:', error);
+      return {};
     }
   },
 
@@ -432,12 +633,14 @@ export const api = {
   },
 
   // ==================== COMMENT ENDPOINTS ====================
-  getComments: async (token, articleId) => {
+  getComments: async (token, articleId, userId) => {
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/api/comment/article/${articleId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const url = userId 
+        ? `${API_BASE_URL}/api/comment/article/${articleId}?userId=${userId}`
+        : `${API_BASE_URL}/api/comment/article/${articleId}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       const data = await handleResponse(res);
       return data;
     } catch (error) {
@@ -446,12 +649,75 @@ export const api = {
     }
   },
 
-  createComment: async (token, articleId, content, userId) => {
+  /**
+   * Create a comment on an article
+   * @param {string} token - Auth token
+   * @param {number} articleId - Article ID
+   * @param {string} content - Comment content
+   * @param {number} userId - User ID
+   * @param {number|null} parentCommentId - Parent comment ID for replies (null for top-level)
+   * @returns {Promise<{success: boolean, id?: number, error?: string}>}
+   */
+  createComment: async (token, articleId, content, userId, parentCommentId = null) => {
     try {
-      console.log('Creating comment:', { articleId, userId, content });
+      console.log('Creating comment:', { articleId, userId, content, parentCommentId });
+
+      const body = { content };
+      if (parentCommentId) {
+        body.parentCommentId = parentCommentId;
+      }
 
       const res = await fetch(
         `${API_BASE_URL}/api/comment/article/${articleId}?userId=${userId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(body),
+        }
+      );
+
+      const response = await handleResponse(res);
+      console.log('Create comment response:', response);
+
+      return {
+        success: response.success || response.status === 200 || response.status === 201,
+        id: response.id || response.Id || response.commentId,
+        creatorName: response.creator || response.Creator || response.creatorName,
+        creatorEmail: response.creatorEmail,
+        parentCommentId: response.parentCommentId ?? response.ParentCommentId ?? parentCommentId,
+        depth: response.depth ?? response.Depth ?? 0,
+        likeCount: response.likeCount ?? response.LikeCount ?? 0,
+        dislikeCount: response.dislikeCount ?? response.DislikeCount ?? 0,
+        error: response.error || response.message,
+        ...response,
+      };
+    } catch (error) {
+      console.error('Error creating comment:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to create comment',
+        status: error.status,
+      };
+    }
+  },
+
+  /**
+   * Create a reply to a comment
+   * @param {string} token - Auth token
+   * @param {number} parentCommentId - Parent comment ID
+   * @param {string} content - Reply content
+   * @param {number} userId - User ID
+   * @returns {Promise<{success: boolean, id?: number, error?: string}>}
+   */
+  createReply: async (token, parentCommentId, content, userId) => {
+    try {
+      console.log('Creating reply:', { parentCommentId, userId, content });
+
+      const res = await fetch(
+        `${API_BASE_URL}/api/comment/${parentCommentId}/reply?userId=${userId}`,
         {
           method: 'POST',
           headers: {
@@ -463,23 +729,50 @@ export const api = {
       );
 
       const response = await handleResponse(res);
-      console.log('Create comment response:', response);
+      console.log('Create reply response:', response);
 
       return {
         success: response.success || response.status === 200 || response.status === 201,
-        id: response.id || response.commentId,
-        creatorName: response.creatorName,
+        id: response.id || response.Id || response.commentId,
+        creatorName: response.creator || response.Creator || response.creatorName,
         creatorEmail: response.creatorEmail,
+        parentCommentId: response.parentCommentId ?? response.ParentCommentId ?? parentCommentId,
+        depth: response.depth ?? response.Depth ?? 1,
+        likeCount: response.likeCount ?? response.LikeCount ?? 0,
+        dislikeCount: response.dislikeCount ?? response.DislikeCount ?? 0,
         error: response.error || response.message,
         ...response,
       };
     } catch (error) {
-      console.error('Error creating comment:', error);
+      console.error('Error creating reply:', error);
       return {
         success: false,
-        error: error.message || 'Failed to create comment',
+        error: error.message || 'Failed to create reply',
         status: error.status,
       };
+    }
+  },
+
+  /**
+   * Get replies for a comment
+   * @param {string} token - Auth token
+   * @param {number} commentId - Parent comment ID
+   * @param {number} userId - User ID (optional)
+   * @returns {Promise<Array>} - List of replies
+   */
+  getCommentReplies: async (token, commentId, userId) => {
+    try {
+      const url = userId
+        ? `${API_BASE_URL}/api/comment/${commentId}/replies?userId=${userId}`
+        : `${API_BASE_URL}/api/comment/${commentId}/replies`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await handleResponse(res);
+      return Array.isArray(data) ? data : (data.replies || data.data || []);
+    } catch (error) {
+      console.error('Error fetching comment replies:', error);
+      return [];
     }
   },
 

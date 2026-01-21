@@ -577,3 +577,181 @@ select:focus {
   font-size: 0.9rem;
   border: 1px solid #e9ecef;
 }
+
+/* ========== COMMENTS SECTION STYLES ========== */
+.comments-section {
+  max-width: 100%;
+}
+
+.comments-list {
+  margin-top: 1rem;
+}
+
+.comment-item {
+  transition: background-color 0.2s ease;
+}
+
+.comment-item:hover {
+  background-color: rgba(0, 0, 0, 0.01);
+}
+
+/* Nested comment styling */
+.replies-container {
+  margin-top: 0.75rem;
+}
+
+.comment-item .comment-item {
+  margin-left: 0;
+  /* Handled by inline styles for dynamic depth */
+}
+
+/* Comment reactions */
+.comment-reactions {
+  margin-top: 0.25rem;
+}
+
+.comment-reactions .btn {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.comment-reactions .btn:hover:not(:disabled) {
+  transform: scale(1.05);
+}
+
+.comment-reactions .btn-primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.comment-reactions .btn-secondary {
+  background-color: #6c757d;
+  border-color: #6c757d;
+}
+
+/* Article reactions */
+.article-reactions .btn {
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.article-reactions .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.article-reactions .btn-primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 8px rgba(244, 128, 36, 0.3);
+}
+
+.article-reactions .btn-primary:hover {
+  background-color: var(--primary-dark);
+  border-color: var(--primary-dark);
+}
+
+.article-reactions .btn-secondary {
+  background-color: #6c757d;
+  border-color: #6c757d;
+}
+
+/* Reply box styling */
+.comment-item form textarea {
+  font-size: 0.9rem;
+  border-radius: 6px;
+  resize: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.comment-item form textarea:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(244, 128, 36, 0.1);
+}
+
+/* Comment author avatar */
+.comment-item .rounded-circle {
+  background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 100%);
+  border: 2px solid #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Hover states for comment actions */
+.comment-item .btn-link {
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.comment-item .btn-link:hover {
+  transform: scale(1.1);
+}
+
+/* Thread connector line styling */
+.comment-item[style*="border-left"] {
+  border-color: #e5e7eb !important;
+  transition: border-color 0.2s ease;
+}
+
+.comment-item[style*="border-left"]:hover {
+  border-color: var(--primary-color) !important;
+}
+
+/* Empty comments state */
+.comments-list .text-muted.fst-italic {
+  padding: 2rem;
+  text-align: center;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px dashed #dee2e6;
+}
+
+/* Comment form */
+.comments-section form textarea {
+  border-radius: 8px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.comments-section form textarea:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(244, 128, 36, 0.1);
+  outline: none;
+}
+
+/* Animation for new comments */
+@keyframes fadeInSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.comment-item {
+  animation: fadeInSlide 0.3s ease;
+}
+
+/* Responsive adjustments for comments */
+@media (max-width: 576px) {
+  .comment-item .d-flex.gap-3 {
+    gap: 0.75rem !important;
+  }
+  
+  .comment-item .rounded-circle {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 0.9rem !important;
+  }
+  
+  .comment-reactions .btn {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.75rem;
+  }
+  
+  .article-reactions .btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+  }
+}

@@ -1225,17 +1225,32 @@ export const api = {
    * Get poll results (aggregated data)
    * @param {string} token - Auth token
    * @param {number} pollId - Poll ID
-   * @returns {Promise<{success: boolean, results?: object, error?: string}>}
+   * @param {number|null} userId - User ID (optional, for checking vote status)
+   * @param {string|null} anonymousSessionId - Anonymous session ID (optional, for non-logged-in users)
+   * @returns {Promise<{success: boolean, results?: object, hasUserVoted?: boolean|null, allowVoteChange?: boolean, error?: string}>}
    */
-  getPollResults: async (token, pollId) => {
+  getPollResults: async (token, pollId, userId = null, anonymousSessionId = null) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/polls/results/${pollId}`, {
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (userId) {
+        params.append('userId', userId);
+      }
+      if (anonymousSessionId) {
+        params.append('anonymousSessionId', anonymousSessionId);
+      }
+      const queryString = params.toString();
+      const url = `${API_BASE_URL}/api/polls/results/${pollId}${queryString ? `?${queryString}` : ''}`;
+
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await handleResponse(res);
       return {
         success: true,
         results: data,
+        hasUserVoted: data.hasUserVoted ?? data.HasUserVoted ?? null,
+        allowVoteChange: data.allowVoteChange ?? data.AllowVoteChange ?? false,
         ...data,
       };
     } catch (error) {

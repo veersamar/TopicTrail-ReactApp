@@ -2,6 +2,46 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
+import { storage } from '../utils/storage';
+
+// ========== VOTE PERSISTENCE HELPERS ==========
+const VOTED_POLLS_KEY = 'votedPolls';
+
+const getVotedPolls = () => {
+    return storage.get(VOTED_POLLS_KEY) || {};
+};
+
+const markPollAsVoted = (pollId, userId, anonymousSessionId) => {
+    const votedPolls = getVotedPolls();
+    const key = userId || anonymousSessionId;
+    if (!votedPolls[key]) {
+        votedPolls[key] = [];
+    }
+    if (!votedPolls[key].includes(pollId)) {
+        votedPolls[key].push(pollId);
+    }
+    storage.set(VOTED_POLLS_KEY, votedPolls);
+};
+
+const hasVotedLocally = (pollId, userId, anonymousSessionId) => {
+    const votedPolls = getVotedPolls();
+    const key = userId || anonymousSessionId;
+    return votedPolls[key]?.includes(pollId) || false;
+};
+
+// ========== USER ANSWERS PERSISTENCE ==========
+const USER_ANSWERS_KEY = 'pollUserAnswers';
+
+const saveUserAnswers = (pollId, answers) => {
+    const allAnswers = storage.get(USER_ANSWERS_KEY) || {};
+    allAnswers[pollId] = answers;
+    storage.set(USER_ANSWERS_KEY, allAnswers);
+};
+
+const getSavedUserAnswers = (pollId) => {
+    const allAnswers = storage.get(USER_ANSWERS_KEY) || {};
+    return allAnswers[pollId] || null;
+};
 
 /**
  * PollDetail - Full poll voting and results experience
@@ -27,6 +67,8 @@ function PollDetail() {
         hasVoted: false,
         showResults: false,
         voteSuccess: false,
+        backendVoteStatus: null, // null = not checked, true = voted, false = not voted
+        canChangeVote: false, // from backend allowVoteChange
     });
 
     // User's answers - keyed by questionId
@@ -37,13 +79,30 @@ function PollDetail() {
     const [resultsLoading, setResultsLoading] = useState(false);
     const [resultsError, setResultsError] = useState(null);
 
+    // ========== GET ANONYMOUS SESSION ID ==========
+    const getAnonymousSessionId = useCallback(() => {
+        let sessionId = localStorage.getItem('poll_anonymous_session');
+        if (!sessionId) {
+            sessionId = 'anon_' + Math.random().toString(36).substring(2, 15);
+            localStorage.setItem('poll_anonymous_session', sessionId);
+        }
+        return sessionId;
+    }, []);
+
     // ========== FETCH RESULTS ==========
     const fetchResults = useCallback(async () => {
         try {
             setResultsLoading(true);
             setResultsError(null);
 
-            const response = await api.getPollResults(token, id);
+            // Pass userId or anonymousSessionId to get vote status
+            const anonymousId = getAnonymousSessionId();
+            const response = await api.getPollResults(
+                token, 
+                id, 
+                userId || null, 
+                !userId ? anonymousId : null
+            );
 
             if (!response.success) {
                 if (response.forbidden) {
@@ -56,13 +115,27 @@ function PollDetail() {
             }
 
             setResults(response.results || response);
+            
+            // Update vote status from backend response
+            const backendHasVoted = response.hasUserVoted;
+            const backendAllowChange = response.allowVoteChange;
+            
+            if (backendHasVoted !== null && backendHasVoted !== undefined) {
+                setPageState(prev => ({
+                    ...prev,
+                    backendVoteStatus: backendHasVoted,
+                    hasVoted: backendHasVoted || prev.hasVoted, // Merge with local state
+                    canChangeVote: backendAllowChange || false,
+                }));
+            }
+            
             setResultsLoading(false);
         } catch (error) {
             console.error('Error fetching results:', error);
             setResultsError(error.message || 'Failed to fetch results');
             setResultsLoading(false);
         }
-    }, [id, token]);
+    }, [id, token, userId, getAnonymousSessionId]);
 
     // ========== CHECK RESULTS VISIBILITY ==========
     const shouldShowResults = useCallback((poll, hasVoted) => {
@@ -96,23 +169,35 @@ function PollDetail() {
 
             console.log('Poll fetched:', poll);
 
-            // Check if user has already voted
-            const hasVoted = poll.hasVoted || poll.userVote || poll.HasVoted || poll.UserVote;
+            // Check if user has already voted (from backend OR local storage)
+            const backendHasVoted = poll.hasVoted || poll.userVote || poll.HasVoted || poll.UserVote;
+            const anonymousId = getAnonymousSessionId();
+            const localHasVoted = hasVotedLocally(parseInt(id, 10), userId, anonymousId);
+            const hasVoted = !!backendHasVoted || localHasVoted;
 
             setPageState(prev => ({
                 ...prev,
                 poll,
-                hasVoted: !!hasVoted,
+                hasVoted: hasVoted,
                 loading: false,
             }));
 
-            // If user has voted, pre-fill their answers and show results
-            if (hasVoted && poll.userAnswers) {
-                setUserAnswers(poll.userAnswers);
+            // If user has voted, pre-fill their answers
+            if (hasVoted) {
+                // Try backend answers first, then local storage
+                if (backendHasVoted && poll.userAnswers) {
+                    setUserAnswers(poll.userAnswers);
+                } else {
+                    // Load from local storage
+                    const savedAnswers = getSavedUserAnswers(parseInt(id, 10));
+                    if (savedAnswers) {
+                        setUserAnswers(savedAnswers);
+                    }
+                }
             }
 
             // Fetch results if appropriate
-            if (hasVoted || shouldShowResults(poll, !!hasVoted)) {
+            if (hasVoted || shouldShowResults(poll, hasVoted)) {
                 fetchResults();
             }
 
@@ -124,7 +209,7 @@ function PollDetail() {
                 loading: false,
             }));
         }
-    }, [id, token, fetchResults, shouldShowResults]);
+    }, [id, token, userId, fetchResults, shouldShowResults, getAnonymousSessionId]);
 
     // ========== FETCH POLL ON MOUNT ==========
     useEffect(() => {
@@ -243,6 +328,13 @@ function PollDetail() {
                 return;
             }
 
+            // Persist vote state to localStorage
+            const anonymousId = getAnonymousSessionId();
+            markPollAsVoted(parseInt(id, 10), userId, anonymousId);
+            
+            // Save user answers to localStorage for future reference
+            saveUserAnswers(parseInt(id, 10), userAnswers);
+
             setPageState(prev => ({
                 ...prev,
                 submitting: false,
@@ -262,16 +354,6 @@ function PollDetail() {
                 error: error.message || 'Failed to submit vote',
             }));
         }
-    };
-
-    // ========== ANONYMOUS SESSION ID ==========
-    const getAnonymousSessionId = () => {
-        let sessionId = localStorage.getItem('poll_anonymous_session');
-        if (!sessionId) {
-            sessionId = 'anon_' + Math.random().toString(36).substring(2, 15);
-            localStorage.setItem('poll_anonymous_session', sessionId);
-        }
-        return sessionId;
     };
 
     // ========== GET POLL TYPE NAME ==========
@@ -316,7 +398,10 @@ function PollDetail() {
                             const isSelected = answer.selectedOptionIds?.includes(optId);
 
                             return (
-                                <div key={optId} className="form-check mb-2">
+                                <div 
+                                    key={optId} 
+                                    className={`form-check mb-2 p-2 rounded ${isSelected && isDisabled ? 'bg-success-subtle border border-success' : ''}`}
+                                >
                                     <input
                                         className="form-check-input"
                                         type="radio"
@@ -326,8 +411,11 @@ function PollDetail() {
                                         onChange={() => handleAnswerChange(qId, optId, pollType)}
                                         disabled={isDisabled}
                                     />
-                                    <label className="form-check-label" htmlFor={`opt_${optId}`}>
+                                    <label className={`form-check-label ${isSelected && isDisabled ? 'fw-semibold text-success' : ''}`} htmlFor={`opt_${optId}`}>
                                         {optText}
+                                        {isSelected && isDisabled && (
+                                            <span className="ms-2 badge bg-success">Your Vote</span>
+                                        )}
                                     </label>
                                 </div>
                             );
@@ -344,7 +432,10 @@ function PollDetail() {
                             const isSelected = answer.selectedOptionIds?.includes(optId);
 
                             return (
-                                <div key={optId} className="form-check mb-2">
+                                <div 
+                                    key={optId} 
+                                    className={`form-check mb-2 p-2 rounded ${isSelected && isDisabled ? 'bg-success-subtle border border-success' : ''}`}
+                                >
                                     <input
                                         className="form-check-input"
                                         type="checkbox"
@@ -353,8 +444,11 @@ function PollDetail() {
                                         onChange={() => handleAnswerChange(qId, optId, pollType)}
                                         disabled={isDisabled}
                                     />
-                                    <label className="form-check-label" htmlFor={`opt_${optId}`}>
+                                    <label className={`form-check-label ${isSelected && isDisabled ? 'fw-semibold text-success' : ''}`} htmlFor={`opt_${optId}`}>
                                         {optText}
+                                        {isSelected && isDisabled && (
+                                            <span className="ms-2 badge bg-success">Your Vote</span>
+                                        )}
                                     </label>
                                 </div>
                             );
@@ -371,16 +465,20 @@ function PollDetail() {
                                 const isSelected = answer.ratingValue === value;
 
                                 return (
-                                    <button
-                                        key={value}
-                                        type="button"
-                                        className={`btn ${isSelected ? 'btn-primary' : 'btn-outline-secondary'}`}
-                                        style={{ width: '42px', height: '42px' }}
-                                        onClick={() => handleAnswerChange(qId, value, pollType)}
-                                        disabled={isDisabled}
-                                    >
-                                        {value}
-                                    </button>
+                                    <div key={value} className="d-flex flex-column align-items-center">
+                                        <button
+                                            type="button"
+                                            className={`btn ${isSelected ? (isDisabled ? 'btn-success' : 'btn-primary') : 'btn-outline-secondary'}`}
+                                            style={{ width: '42px', height: '42px' }}
+                                            onClick={() => handleAnswerChange(qId, value, pollType)}
+                                            disabled={isDisabled}
+                                        >
+                                            {value}
+                                        </button>
+                                        {isSelected && isDisabled && (
+                                            <small className="text-success mt-1 fw-semibold">Your Vote</small>
+                                        )}
+                                    </div>
                                 );
                             })}
                         </div>
@@ -394,14 +492,23 @@ function PollDetail() {
                 {/* Short Answer */}
                 {pollType === 4 && (
                     <div className="ps-4">
-                        <textarea
-                            className="form-control"
-                            rows={3}
-                            placeholder="Enter your answer..."
-                            value={answer.textAnswer || ''}
-                            onChange={(e) => handleAnswerChange(qId, e.target.value, pollType)}
-                            disabled={isDisabled}
-                        />
+                        {isDisabled && answer.textAnswer ? (
+                            <div className="p-3 bg-success-subtle border border-success rounded">
+                                <div className="d-flex align-items-center mb-2">
+                                    <span className="badge bg-success me-2">Your Answer</span>
+                                </div>
+                                <p className="mb-0 text-dark">{answer.textAnswer}</p>
+                            </div>
+                        ) : (
+                            <textarea
+                                className="form-control"
+                                rows={3}
+                                placeholder="Enter your answer..."
+                                value={answer.textAnswer || ''}
+                                onChange={(e) => handleAnswerChange(qId, e.target.value, pollType)}
+                                disabled={isDisabled}
+                            />
+                        )}
                     </div>
                 )}
             </div>
@@ -596,7 +703,7 @@ function PollDetail() {
         );
     }
 
-    const { poll, hasVoted, submitting, voteSuccess, showResults } = pageState;
+    const { poll, hasVoted, submitting, voteSuccess, showResults, canChangeVote } = pageState;
     const title = poll.title || poll.Title;
     const description = poll.description || poll.Description;
     const questions = poll.questions || poll.Questions || [];
@@ -604,8 +711,25 @@ function PollDetail() {
     const creatorName = poll.creatorName || poll.CreatorName || 'Anonymous';
     const createdDate = poll.createdDate || poll.CreatedDate;
     const endDate = poll.endDate || poll.EndDate;
-    const allowVoteChange = poll.allowVoteChange || poll.AllowVoteChange;
+    // Use backend canChangeVote if available, otherwise fall back to poll settings
+    const allowVoteChange = canChangeVote || poll.allowVoteChange || poll.AllowVoteChange;
     const isPollClosed = endDate && new Date(endDate) < new Date();
+    
+    // Determine if submit/vote button should be disabled
+    const isVoteButtonDisabled = () => {
+        if (submitting) return true;
+        if (isPollClosed) return true;
+        if (hasVoted && !allowVoteChange) return true;
+        return false;
+    };
+    
+    // Get submit button text based on vote status
+    const getSubmitButtonText = () => {
+        if (submitting) return hasVoted ? 'Updating...' : 'Submitting...';
+        if (hasVoted && allowVoteChange) return 'Change Vote';
+        if (hasVoted && !allowVoteChange) return 'Already Voted';
+        return 'Submit Vote';
+    };
 
     return (
         <div className="container-lg my-4" style={{ maxWidth: '800px' }}>
@@ -621,7 +745,22 @@ function PollDetail() {
             <div className="bg-white rounded shadow-sm p-4 mb-4">
                 <div className="d-flex align-items-start justify-content-between">
                     <div>
-                        <span className="badge bg-primary-subtle text-primary mb-2">{categoryName}</span>
+                        <div className="d-flex align-items-center gap-2 mb-2">
+                            <span className="badge bg-primary-subtle text-primary">{categoryName}</span>
+                            {/* Vote Status Badge */}
+                            {hasVoted && (
+                                <span className="badge bg-success-subtle text-success">
+                                    <i className="bi bi-check-circle-fill me-1"></i>
+                                    You have voted
+                                </span>
+                            )}
+                            {hasVoted && allowVoteChange && !isPollClosed && (
+                                <span className="badge bg-info-subtle text-info">
+                                    <i className="bi bi-arrow-repeat me-1"></i>
+                                    You can change your vote
+                                </span>
+                            )}
+                        </div>
                         <h2 className="fw-bold mb-2">{title}</h2>
                         {description && <p className="text-muted mb-3">{description}</p>}
                     </div>
@@ -663,11 +802,25 @@ function PollDetail() {
                 </div>
             )}
 
-            {/* Already Voted Alert */}
-            {hasVoted && !allowVoteChange && (
+            {/* Already Voted Alert - Different messages based on allowVoteChange */}
+            {hasVoted && !allowVoteChange && !isPollClosed && (
                 <div className="alert alert-info d-flex align-items-center mb-4">
                     <i className="bi bi-info-circle-fill me-2"></i>
-                    You have already voted in this poll. Your answers are shown below.
+                    You have already voted in this poll. Your answers are shown below. Vote changes are not allowed for this poll.
+                </div>
+            )}
+            
+            {hasVoted && allowVoteChange && !isPollClosed && (
+                <div className="alert alert-success d-flex align-items-center mb-4">
+                    <i className="bi bi-arrow-repeat me-2"></i>
+                    You have voted in this poll. You can update your answers if you'd like to change your vote.
+                </div>
+            )}
+            
+            {hasVoted && isPollClosed && (
+                <div className="alert alert-secondary d-flex align-items-center mb-4">
+                    <i className="bi bi-lock-fill me-2"></i>
+                    This poll has ended. Your vote has been recorded.
                 </div>
             )}
 
@@ -695,57 +848,50 @@ function PollDetail() {
                 </div>
             )}
 
-            {/* Submit Button */}
-            {!hasVoted && !isPollClosed && (
+            {/* Vote/Submit Button - Unified logic */}
+            {!isPollClosed && (
                 <div className="d-flex justify-content-end gap-3 mb-4">
                     <button
                         type="button"
-                        className="btn btn-primary btn-lg px-5"
+                        className={`btn btn-lg px-5 ${
+                            hasVoted && !allowVoteChange 
+                                ? 'btn-secondary' 
+                                : hasVoted && allowVoteChange 
+                                    ? 'btn-outline-primary' 
+                                    : 'btn-primary'
+                        }`}
                         onClick={handleSubmitVote}
-                        disabled={submitting}
+                        disabled={isVoteButtonDisabled()}
+                        style={hasVoted && !allowVoteChange ? { 
+                            opacity: 0.65, 
+                            cursor: 'not-allowed' 
+                        } : {}}
+                        title={hasVoted && !allowVoteChange ? 'You have already voted and cannot change your vote' : ''}
                     >
                         {submitting ? (
                             <>
                                 <span className="spinner-border spinner-border-sm me-2"></span>
-                                Submitting...
+                                {hasVoted ? 'Updating...' : 'Submitting...'}
                             </>
                         ) : (
                             <>
-                                <i className="bi bi-check2-circle me-2"></i>
-                                Submit Vote
+                                <i className={`bi me-2 ${
+                                    hasVoted && !allowVoteChange 
+                                        ? 'bi-check-circle-fill' 
+                                        : hasVoted && allowVoteChange 
+                                            ? 'bi-pencil' 
+                                            : 'bi-check2-circle'
+                                }`}></i>
+                                {getSubmitButtonText()}
                             </>
                         )}
                     </button>
                 </div>
             )}
 
-            {/* Change Vote Button */}
-            {hasVoted && allowVoteChange && !isPollClosed && (
-                <div className="d-flex justify-content-end gap-3 mb-4">
-                    <button
-                        type="button"
-                        className="btn btn-outline-primary"
-                        onClick={handleSubmitVote}
-                        disabled={submitting}
-                    >
-                        {submitting ? (
-                            <>
-                                <span className="spinner-border spinner-border-sm me-2"></span>
-                                Updating...
-                            </>
-                        ) : (
-                            <>
-                                <i className="bi bi-pencil me-2"></i>
-                                Update Vote
-                            </>
-                        )}
-                    </button>
-                </div>
-            )}
-
-            {/* Toggle Results Button */}
-            {hasVoted && (
-                <div className="d-flex justify-content-center mb-4">
+            {/* View Results Button - Always visible */}
+            <div className="d-flex justify-content-center gap-3 mb-4">
+                {hasVoted && (
                     <button
                         type="button"
                         className="btn btn-outline-secondary"
@@ -759,11 +905,26 @@ function PollDetail() {
                         <i className={`bi bi-${showResults ? 'list-check' : 'bar-chart'} me-2`}></i>
                         {showResults ? 'View Questions' : 'View Results'}
                     </button>
-                </div>
-            )}
+                )}
+                {!hasVoted && (
+                    <button
+                        type="button"
+                        className="btn btn-outline-primary"
+                        onClick={() => {
+                            setPageState(prev => ({ ...prev, showResults: !prev.showResults }));
+                            if (!results && !showResults) {
+                                fetchResults();
+                            }
+                        }}
+                    >
+                        <i className="bi bi-bar-chart me-2"></i>
+                        View Results
+                    </button>
+                )}
+            </div>
 
             {/* Results Section */}
-            {(showResults || hasVoted) && renderResults()}
+            {showResults && renderResults()}
         </div>
     );
 }

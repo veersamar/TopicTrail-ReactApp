@@ -14,7 +14,7 @@ import { useNavigate, useOutletContext } from 'react-router-dom';
  * - META panel: Category, Sub-Category, Visibility, Tags (no Intent, no Audience)
  */
 function CreatePollPage() {
-    const { token } = useAuth();
+    const { token, userId } = useAuth();
     const navigate = useNavigate();
     const outletContext = useOutletContext() || {};
     const setIsFocusMode = outletContext.setIsFocusMode;
@@ -427,6 +427,8 @@ function CreatePollPage() {
                     : null,
                 MinScale: q.pollType === 'rating' ? (q.ratingMin || 1) : null,
                 MaxScale: q.pollType === 'rating' ? (q.ratingMax || 5) : null,
+                LowLabel: q.pollType === 'rating' ? (q.ratingLowLabel || null) : null,
+                HighLabel: q.pollType === 'rating' ? (q.ratingHighLabel || null) : null,
             }));
         } else {
             // Single question poll - use main poll data
@@ -440,6 +442,8 @@ function CreatePollPage() {
             } else if (formData.pollType === 'rating') {
                 question.MinScale = formData.ratingMin;
                 question.MaxScale = formData.ratingMax;
+                question.LowLabel = formData.ratingLowLabel || null;
+                question.HighLabel = formData.ratingHighLabel || null;
             }
             // ShortAnswer doesn't need additional options
 
@@ -465,9 +469,10 @@ function CreatePollPage() {
                 IsPublic: formData.visibility === 'Public',
                 StartDate: null,
                 EndDate: null,
-                ResultVisibility: 1, // Default: After voting
+                ResultVisibility: 'AfterVoting',
                 OneVotePerUser: true,
                 AllowVoteChange: false,
+                CreatedBy: parseInt(userId, 10),
                 Questions: buildPollQuestions(),
                 Tags: formData.tags.length > 0 ? formData.tags : ['poll'],
             };

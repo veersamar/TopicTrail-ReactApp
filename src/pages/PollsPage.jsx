@@ -182,33 +182,24 @@ function PollsPage() {
                             >
                                 <div className="d-flex justify-content-between align-items-start">
                                     <div className="flex-grow-1">
-                                        <div className="d-flex align-items-center gap-2 mb-1">
-                                            <h5 className="mb-0">
-                                                <Link 
-                                                    to={`/poll/${pollId}`}
-                                                    className="text-decoration-none text-dark"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                >
-                                                    {poll.title || poll.Title}
-                                                </Link>
-                                            </h5>
-                                            {hasVoted && (
-                                                <span className="badge bg-success-subtle text-success" title="You have voted">
-                                                    ✓ Voted
-                                                </span>
-                                            )}
-                                            {hasVoted && (poll.allowVoteChange || poll.AllowVoteChange) && !isPollEnded && (
-                                                <span className="badge bg-info-subtle text-info" title="You can change your vote">
-                                                    ↻ Change allowed
-                                                </span>
-                                            )}
-                                        </div>
+                                        <h5 className="mb-1">
+                                            <Link 
+                                                to={`/poll/${pollId}`}
+                                                className="text-decoration-none text-dark"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                {poll.title || poll.Title}
+                                            </Link>
+                                        </h5>
                                         {(poll.description || poll.Description) && (
                                             <p className="text-muted small mb-2 text-truncate-2">
                                                 {poll.description || poll.Description}
                                             </p>
                                         )}
                                         <div className="d-flex flex-wrap gap-3 small text-muted align-items-center">
+                                            {(poll.creatorName || poll.CreatorName) && (
+                                                <span>👤 {poll.creatorName || poll.CreatorName}</span>
+                                            )}
                                             <span>📅 Created: {formatDate(poll.createdOn || poll.CreatedOn || poll.createdDate || poll.CreatedDate)}</span>
                                             {endDate && (
                                                 <span className={isPollEnded ? 'text-danger' : 'text-warning'}>

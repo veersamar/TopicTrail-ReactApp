@@ -62,7 +62,8 @@ function PollDetail() {
     const [pageState, setPageState] = useState({
         poll: null,
         loading: true,
-        error: null,
+        error: null,           // For loading/API errors - shows error page
+        validationError: null, // For form validation errors - shows inline
         submitting: false,
         hasVoted: false,
         showResults: false,
@@ -104,8 +105,37 @@ function PollDetail() {
                 !userId ? anonymousId : null
             );
 
+            // Even if results are forbidden, check if hasUserVoted is returned
+            const backendHasVoted = response.hasUserVoted;
+            const backendAllowChange = response.allowVoteChange;
+            
+            if (backendHasVoted !== null && backendHasVoted !== undefined) {
+                setPageState(prev => ({
+                    ...prev,
+                    backendVoteStatus: backendHasVoted,
+                    hasVoted: backendHasVoted || prev.hasVoted,
+                    canChangeVote: backendAllowChange || false,
+                    showResults: backendHasVoted && response.success,
+                }));
+                
+                // If user has voted but we don't have their answers loaded, try to load from localStorage
+                if (backendHasVoted) {
+                    setUserAnswers(prev => {
+                        // Only load from localStorage if we don't already have answers
+                        if (Object.keys(prev).length === 0) {
+                            const savedAnswers = getSavedUserAnswers(parseInt(id, 10));
+                            if (savedAnswers && Object.keys(savedAnswers).length > 0) {
+                                return savedAnswers;
+                            }
+                        }
+                        return prev;
+                    });
+                }
+            }
+
             if (!response.success) {
                 if (response.forbidden) {
+                    // Results not visible yet, but we still updated vote status above
                     setResultsError('Results are not available yet');
                 } else {
                     setResultsError(response.error || 'Failed to fetch results');
@@ -115,20 +145,6 @@ function PollDetail() {
             }
 
             setResults(response.results || response);
-            
-            // Update vote status from backend response
-            const backendHasVoted = response.hasUserVoted;
-            const backendAllowChange = response.allowVoteChange;
-            
-            if (backendHasVoted !== null && backendHasVoted !== undefined) {
-                setPageState(prev => ({
-                    ...prev,
-                    backendVoteStatus: backendHasVoted,
-                    hasVoted: backendHasVoted || prev.hasVoted, // Merge with local state
-                    canChangeVote: backendAllowChange || false,
-                }));
-            }
-            
             setResultsLoading(false);
         } catch (error) {
             console.error('Error fetching results:', error);
@@ -139,11 +155,24 @@ function PollDetail() {
 
     // ========== CHECK RESULTS VISIBILITY ==========
     const shouldShowResults = useCallback((poll, hasVoted) => {
-        const visibility = poll.resultVisibility || poll.ResultVisibility;
+        const rawVisibility = poll.resultVisibility || poll.ResultVisibility;
         const endDate = poll.endDate || poll.EndDate;
         const hasEnded = endDate && new Date(endDate) < new Date();
 
-        // 1 = AfterVoting, 2 = AfterPollEnds, 3 = AdminOnly
+        // Normalize visibility - can be number or string
+        let visibility = rawVisibility;
+        if (typeof rawVisibility === 'string') {
+            const visibilityMap = {
+                'aftervoting': 1,
+                'afterpollends': 2,
+                'adminonly': 3,
+                'always': 0, // Always show results
+            };
+            visibility = visibilityMap[rawVisibility.toLowerCase()] ?? (parseInt(rawVisibility, 10) || 1);
+        }
+
+        // 0 = Always, 1 = AfterVoting, 2 = AfterPollEnds, 3 = AdminOnly
+        if (visibility === 0) return true; // Always show results
         if (visibility === 1 && hasVoted) return true;
         if (visibility === 2 && hasEnded) return true;
         if (visibility === 3 && poll.isCreator) return true;
@@ -167,13 +196,11 @@ function PollDetail() {
                 return;
             }
 
-            console.log('Poll fetched:', poll);
-
             // Check if user has already voted (from backend OR local storage)
             const backendHasVoted = poll.hasVoted || poll.userVote || poll.HasVoted || poll.UserVote;
             const anonymousId = getAnonymousSessionId();
             const localHasVoted = hasVotedLocally(parseInt(id, 10), userId, anonymousId);
-            const hasVoted = !!backendHasVoted || localHasVoted;
+            let hasVoted = !!backendHasVoted || localHasVoted;
 
             setPageState(prev => ({
                 ...prev,
@@ -196,10 +223,9 @@ function PollDetail() {
                 }
             }
 
-            // Fetch results if appropriate
-            if (hasVoted || shouldShowResults(poll, hasVoted)) {
-                fetchResults();
-            }
+            // Always try to fetch results - the results API will tell us the true vote status
+            // This handles cases where the poll endpoint doesn't return hasVoted correctly
+            fetchResults();
 
         } catch (error) {
             console.error('Error fetching poll:', error);
@@ -229,7 +255,9 @@ function PollDetail() {
     }, [id, token, fetchPoll]);
 
     // ========== HANDLE ANSWER CHANGE ==========
-    const handleAnswerChange = (questionId, value, pollType) => {
+    const handleAnswerChange = (questionId, value, rawPollType) => {
+        const pollType = normalizePollType(rawPollType);
+        
         setUserAnswers(prev => {
             const newAnswers = { ...prev };
 
@@ -276,7 +304,7 @@ function PollDetail() {
             const answer = userAnswers[qId];
             if (!answer) return true;
 
-            const pollType = q.pollType || q.PollType;
+            const pollType = normalizePollType(q.pollType || q.PollType);
             if ((pollType === 1 || pollType === 2) && (!answer.selectedOptionIds || answer.selectedOptionIds.length === 0)) {
                 return true;
             }
@@ -288,13 +316,13 @@ function PollDetail() {
         if (missingAnswers.length > 0) {
             setPageState(prev => ({
                 ...prev,
-                error: 'Please answer all questions before submitting',
+                validationError: 'Please answer all questions before submitting',
             }));
             return;
         }
 
         try {
-            setPageState(prev => ({ ...prev, submitting: true, error: null }));
+            setPageState(prev => ({ ...prev, submitting: true, validationError: null }));
 
             // Build vote submission data
             const answers = questions.map(q => {
@@ -315,15 +343,13 @@ function PollDetail() {
                 Answers: answers,
             };
 
-            console.log('Submitting vote:', voteData);
-
             const result = await api.submitPollVote(token, voteData);
 
             if (!result.success) {
                 setPageState(prev => ({
                     ...prev,
                     submitting: false,
-                    error: result.error || 'Failed to submit vote',
+                    validationError: result.error || 'Failed to submit vote',
                 }));
                 return;
             }
@@ -351,30 +377,67 @@ function PollDetail() {
             setPageState(prev => ({
                 ...prev,
                 submitting: false,
-                error: error.message || 'Failed to submit vote',
+                validationError: error.message || 'Failed to submit vote',
             }));
         }
     };
 
+    // ========== NORMALIZE POLL TYPE ==========
+    // Converts various poll type formats to a consistent numeric value
+    const normalizePollType = (type) => {
+        if (type === null || type === undefined) return 0;
+        
+        // If already a number, return it
+        if (typeof type === 'number') return type;
+        
+        // If string number, parse it
+        const parsed = parseInt(type, 10);
+        if (!isNaN(parsed)) return parsed;
+        
+        // Handle string enum names (case-insensitive)
+        const typeStr = String(type).toLowerCase();
+        const mapping = {
+            'singlechoice': 1,
+            'single': 1,
+            'single choice': 1,
+            'multiplechoice': 2,
+            'multiple': 2,
+            'multiple choice': 2,
+            'ratingscale': 3,
+            'rating': 3,
+            'rating scale': 3,
+            'scale': 3,
+            'shortanswer': 4,
+            'short': 4,
+            'short answer': 4,
+            'text': 4,
+        };
+        return mapping[typeStr] || 0;
+    };
+
     // ========== GET POLL TYPE NAME ==========
     const getPollTypeName = (type) => {
+        const normalizedType = normalizePollType(type);
         const types = {
             1: 'Single Choice',
             2: 'Multiple Choice',
             3: 'Rating Scale',
             4: 'Short Answer',
         };
-        return types[type] || 'Unknown';
+        return types[normalizedType] || 'Unknown';
     };
 
     // ========== RENDER QUESTION ==========
     const renderQuestion = (question, index) => {
         const qId = question.id || question.Id;
         const qText = question.questionText || question.QuestionText || question.text || question.Text;
-        const pollType = question.pollType || question.PollType;
+        const rawPollType = question.pollType || question.PollType;
+        const pollType = normalizePollType(rawPollType); // Normalize to numeric
         const options = question.options || question.Options || [];
         const minScale = question.minScale || question.MinScale || 1;
         const maxScale = question.maxScale || question.MaxScale || 5;
+        const lowLabel = question.lowLabel || question.LowLabel || '';
+        const highLabel = question.highLabel || question.HighLabel || '';
 
         const isDisabled = pageState.hasVoted && !pageState.poll?.allowVoteChange;
         const answer = userAnswers[qId] || {};
@@ -385,7 +448,7 @@ function PollDetail() {
                     <span className="badge bg-primary me-2">{index + 1}</span>
                     <div className="flex-grow-1">
                         <h5 className="mb-1 fw-bold">{qText}</h5>
-                        <small className="text-muted">{getPollTypeName(pollType)}</small>
+                        <small className="text-muted">{getPollTypeName(rawPollType)}</small>
                     </div>
                 </div>
 
@@ -459,33 +522,54 @@ function PollDetail() {
                 {/* Rating Scale */}
                 {pollType === 3 && (
                     <div className="ps-4">
-                        <div className="d-flex align-items-center gap-2 flex-wrap">
-                            {Array.from({ length: maxScale - minScale + 1 }, (_, i) => {
-                                const value = minScale + i;
-                                const isSelected = answer.ratingValue === value;
+                        <div className="d-flex align-items-center justify-content-between">
+                            {/* Low label */}
+                            {lowLabel && (
+                                <span className="text-muted small me-3" style={{ maxWidth: '120px' }}>
+                                    {lowLabel}
+                                </span>
+                            )}
+                            
+                            {/* Rating buttons */}
+                            <div className="d-flex align-items-center gap-2 flex-wrap">
+                                {Array.from({ length: maxScale - minScale + 1 }, (_, i) => {
+                                    const value = minScale + i;
+                                    const isSelected = answer.ratingValue === value;
 
-                                return (
-                                    <div key={value} className="d-flex flex-column align-items-center">
-                                        <button
-                                            type="button"
-                                            className={`btn ${isSelected ? (isDisabled ? 'btn-success' : 'btn-primary') : 'btn-outline-secondary'}`}
-                                            style={{ width: '42px', height: '42px' }}
-                                            onClick={() => handleAnswerChange(qId, value, pollType)}
-                                            disabled={isDisabled}
-                                        >
-                                            {value}
-                                        </button>
-                                        {isSelected && isDisabled && (
-                                            <small className="text-success mt-1 fw-semibold">Your Vote</small>
-                                        )}
-                                    </div>
-                                );
-                            })}
+                                    return (
+                                        <div key={value} className="d-flex flex-column align-items-center">
+                                            <button
+                                                type="button"
+                                                className={`btn ${isSelected ? (isDisabled ? 'btn-success' : 'btn-primary') : 'btn-outline-secondary'}`}
+                                                style={{ width: '42px', height: '42px' }}
+                                                onClick={() => handleAnswerChange(qId, value, pollType)}
+                                                disabled={isDisabled}
+                                            >
+                                                {value}
+                                            </button>
+                                            {isSelected && isDisabled && (
+                                                <small className="text-success mt-1 fw-semibold">Your Vote</small>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            
+                            {/* High label */}
+                            {highLabel && (
+                                <span className="text-muted small ms-3" style={{ maxWidth: '120px' }}>
+                                    {highLabel}
+                                </span>
+                            )}
                         </div>
-                        <div className="d-flex justify-content-between mt-1 text-muted small">
-                            <span>{minScale} - Low</span>
-                            <span>{maxScale} - High</span>
-                        </div>
+                        
+                        {/* Fallback labels if no custom labels provided */}
+                        {!lowLabel && !highLabel && (
+                            <div className="d-flex justify-content-between mt-2 text-muted small">
+                                <span>{minScale} - Low</span>
+                                <span>{maxScale} - High</span>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -559,11 +643,22 @@ function PollDetail() {
     // ========== RENDER QUESTION RESULT ==========
     const renderQuestionResult = (question, index) => {
         const qText = question.questionText || question.QuestionText || question.text || question.Text;
-        const pollType = question.pollType || question.PollType;
-        const options = question.options || question.Options || [];
+        const rawPollType = question.pollType || question.PollType;
+        const pollType = normalizePollType(rawPollType); // Normalize to numeric
+        let options = question.options || question.Options || [];
         const totalVotes = question.totalVotes || question.TotalVotes || 0;
         const avgRating = question.averageRating || question.AverageRating;
         const textAnswers = question.textAnswers || question.TextAnswers || [];
+        const minScale = question.minScale || question.MinScale || 1;
+        const maxScale = question.maxScale || question.MaxScale || 5;
+
+        // For rating scale, generate options if empty
+        if (pollType === 3 && options.length === 0) {
+            options = Array.from({ length: maxScale - minScale + 1 }, (_, i) => ({
+                value: minScale + i,
+                voteCount: 0,
+            }));
+        }
 
         return (
             <div key={index} className="mb-4 p-4 border rounded bg-white">
@@ -703,7 +798,7 @@ function PollDetail() {
         );
     }
 
-    const { poll, hasVoted, submitting, voteSuccess, showResults, canChangeVote } = pageState;
+    const { poll, hasVoted, submitting, voteSuccess, showResults, canChangeVote, validationError } = pageState;
     const title = poll.title || poll.Title;
     const description = poll.description || poll.Description;
     const questions = poll.questions || poll.Questions || [];
@@ -833,6 +928,19 @@ function PollDetail() {
                         type="button"
                         className="btn-close ms-auto"
                         onClick={() => setPageState(prev => ({ ...prev, error: null }))}
+                    ></button>
+                </div>
+            )}
+
+            {/* Validation Error Alert */}
+            {validationError && (
+                <div className="alert alert-warning d-flex align-items-center mb-4">
+                    <i className="bi bi-exclamation-triangle-fill me-2"></i>
+                    {validationError}
+                    <button
+                        type="button"
+                        className="btn-close ms-auto"
+                        onClick={() => setPageState(prev => ({ ...prev, validationError: null }))}
                     ></button>
                 </div>
             )}

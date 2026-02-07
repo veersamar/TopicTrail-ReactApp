@@ -1178,7 +1178,53 @@ export const api = {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await handleResponse(res);
-      return data;
+      
+      // Normalize the response - the API might return the poll object directly
+      // or wrapped in a data property
+      const poll = data.data || data;
+      
+      // Ensure consistent property access (handle both camelCase and PascalCase)
+      return {
+        success: true,
+        // Core poll properties
+        id: poll.id || poll.Id,
+        title: poll.title || poll.Title,
+        description: poll.description || poll.Description,
+        categoryId: poll.categoryId || poll.CategoryId,
+        categoryName: poll.categoryName || poll.CategoryName,
+        subCategoryId: poll.subCategoryId || poll.SubCategoryId,
+        subCategoryName: poll.subCategoryName || poll.SubCategoryName,
+        isPublic: poll.isPublic ?? poll.IsPublic,
+        startDate: poll.startDate || poll.StartDate,
+        endDate: poll.endDate || poll.EndDate,
+        resultVisibility: poll.resultVisibility || poll.ResultVisibility,
+        oneVotePerUser: poll.oneVotePerUser ?? poll.OneVotePerUser,
+        allowVoteChange: poll.allowVoteChange ?? poll.AllowVoteChange,
+        createdBy: poll.createdBy || poll.CreatedBy,
+        creatorName: poll.creatorName || poll.CreatorName,
+        createdDate: poll.createdDate || poll.CreatedDate || poll.createdOn || poll.CreatedOn,
+        modifiedDate: poll.modifiedDate || poll.ModifiedDate,
+        // Questions array
+        questions: (poll.questions || poll.Questions || []).map(q => ({
+          id: q.id || q.Id,
+          questionText: q.questionText || q.QuestionText,
+          pollType: q.pollType || q.PollType,
+          minScale: q.minScale || q.MinScale,
+          maxScale: q.maxScale || q.MaxScale,
+          lowLabel: q.lowLabel || q.LowLabel,
+          highLabel: q.highLabel || q.HighLabel,
+          options: (q.options || q.Options || []).map(opt => ({
+            id: opt.id || opt.Id,
+            optionText: opt.optionText || opt.OptionText,
+            displayOrder: opt.displayOrder || opt.DisplayOrder,
+          })),
+        })),
+        // Vote status
+        hasVoted: poll.hasVoted ?? poll.HasVoted ?? poll.userVote ?? poll.UserVote ?? false,
+        voteCount: poll.voteCount || poll.VoteCount || poll.totalVotes || poll.TotalVotes || 0,
+        // Tags
+        tags: poll.tags || poll.Tags || [],
+      };
     } catch (error) {
       console.error('Error fetching poll:', error);
       return null;
@@ -1245,13 +1291,108 @@ export const api = {
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await handleResponse(res);
+      const rawData = await handleResponse(res);
+      
+      // Normalize the response data - handle nested response structures
+      // The API might return { data: { ... } } or { result: { ... } } or directly { ... }
+      const data = rawData.data || rawData.result || rawData.Result || rawData;
+      
+      // Check for alternative response structures
+      const questionsArray = data.questions || data.Questions || 
+                            data.questionResults || data.QuestionResults ||
+                            data.results?.questions || data.Results?.Questions || [];
+      
+      const totalResponsesValue = data.totalResponses || data.TotalResponses || 
+                                  data.totalVotes || data.TotalVotes ||
+                                  data.responseCount || data.ResponseCount ||
+                                  data.voteCount || data.VoteCount || 0;
+      
+      // Normalize questions with results
+      const normalizedQuestions = questionsArray.map(q => {
+        
+        const pollType = q.pollType || q.PollType;
+        
+        // For rating scale, extract from RatingScale object
+        const ratingScaleData = q.ratingScale || q.RatingScale;
+        
+        // For rating scale, build options from ratingDistribution or ratings if options is empty
+        let options = q.options || q.Options || [];
+        
+        // Handle null options
+        if (options === null) options = [];
+        
+        const ratingDistribution = q.ratingDistribution || q.RatingDistribution || 
+                                   q.ratings || q.Ratings ||
+                                   q.scaleResults || q.ScaleResults ||
+                                   ratingScaleData?.Distribution || ratingScaleData?.distribution;
+        
+        // If this is a rating poll and we have rating distribution but no options
+        if ((pollType === 3 || pollType === 'RatingScale') && ratingDistribution && options.length === 0) {
+          // Convert rating distribution object/array to options format
+          if (Array.isArray(ratingDistribution)) {
+            options = ratingDistribution.map(r => ({
+              id: r.value || r.Value || r.rating || r.Rating || r.scale || r.Scale,
+              value: r.value || r.Value || r.rating || r.Rating || r.scale || r.Scale,
+              voteCount: r.count || r.Count || r.voteCount || r.VoteCount || r.votes || r.Votes || 0,
+            }));
+          } else if (typeof ratingDistribution === 'object') {
+            // Object format: { "1": 5, "2": 3, ... }
+            options = Object.entries(ratingDistribution).map(([value, count]) => ({
+              id: parseInt(value, 10),
+              value: parseInt(value, 10),
+              voteCount: count,
+            }));
+          }
+        }
+        
+        // Normalize options
+        const normalizedOptions = options.map(opt => ({
+          id: opt.id || opt.Id,
+          optionText: opt.optionText || opt.OptionText,
+          value: opt.value || opt.Value,
+          voteCount: opt.voteCount || opt.VoteCount || opt.count || opt.Count || opt.votes || opt.Votes || 0,
+        }));
+        
+        // Get total votes for this question
+        const questionTotalVotes = q.totalVotes || q.TotalVotes || 
+                                   q.responseCount || q.ResponseCount ||
+                                   q.voteCount || q.VoteCount || 
+                                   totalResponsesValue || 0;
+        
+        // Get average rating - check RatingScale object first
+        const avgRating = ratingScaleData?.Average || ratingScaleData?.average ||
+                         q.averageRating || q.AverageRating || 
+                         q.average || q.Average ||
+                         q.avgRating || q.AvgRating ||
+                         q.mean || q.Mean;
+        
+        // Get min/max scale from RatingScale object
+        const minScale = ratingScaleData?.Min || ratingScaleData?.min || q.minScale || q.MinScale || 1;
+        const maxScale = ratingScaleData?.Max || ratingScaleData?.max || q.maxScale || q.MaxScale || 5;
+        
+        return {
+          id: q.id || q.Id || q.questionId || q.QuestionId,
+          questionText: q.questionText || q.QuestionText || q.text || q.Text,
+          pollType: pollType,
+          totalVotes: questionTotalVotes,
+          averageRating: avgRating,
+          minScale: minScale,
+          maxScale: maxScale,
+          options: normalizedOptions,
+          textAnswers: q.textAnswers || q.TextAnswers || [],
+        };
+      });
+      
       return {
         success: true,
-        results: data,
+        results: {
+          pollId: data.pollId || data.PollId || pollId,
+          title: data.title || data.Title,
+          totalResponses: totalResponsesValue,
+          questions: normalizedQuestions,
+        },
         hasUserVoted: data.hasUserVoted ?? data.HasUserVoted ?? null,
         allowVoteChange: data.allowVoteChange ?? data.AllowVoteChange ?? false,
-        ...data,
       };
     } catch (error) {
       console.error('Error fetching poll results:', error);

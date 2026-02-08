@@ -603,7 +603,7 @@ function CreatePollPage() {
             {/* Page Header */}
             <div className="d-flex align-items-center mb-4">
                 <div className="me-3 p-3 rounded-3" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
-                    <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>📊</span>
+                    <span style={{ fontSize: '1.25rem', lineHeight: 1, fontWeight: 'bold' }}>Poll</span>
                 </div>
                 <div>
                     <h2 className="mb-1 fw-bold">Create Poll / Survey</h2>

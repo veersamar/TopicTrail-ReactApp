@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import CommentItem from './CommentItem';
+import { Button, Textarea, EmptyState, Alert } from './ui';
 
 /**
  * CommentList Component
@@ -193,49 +194,52 @@ function CommentList({ articleId, initialComments = [], onError }) {
   }, []);
 
   return (
-    <div className="comments-section mt-5 pt-4 border-top">
+    <section className="section" id="comments">
       {/* Header */}
-      <div className="d-flex align-items-center justify-content-between mb-4">
-        <h3 className="fw-bold m-0">
+      <div className="section__header">
+        <h3 className="heading-section">
           Comments ({totalCommentCount})
         </h3>
-        <button
-          className="btn btn-link text-decoration-none"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => setShowComments(!showComments)}
         >
-          {showComments ? 'Hide Comments' : 'Show Comments'}
-        </button>
+          {showComments ? 'Hide' : 'Show'}
+        </Button>
       </div>
 
       {showComments && (
-        <div className="animate__animated animate__fadeIn">
+        <div className="section__content">
           {/* New Comment Form */}
           {userId ? (
-            <form onSubmit={handleAddComment} className="mb-5">
-              <textarea
-                className="form-control mb-3"
+            <form onSubmit={handleAddComment} className="stack stack--md mb-8">
+              <Textarea
                 placeholder="Join the discussion..."
                 value={newCommentContent}
                 onChange={(e) => setNewCommentContent(e.target.value)}
                 disabled={isSubmitting}
-                rows="3"
+                rows={3}
               />
-              <button
-                type="submit"
-                className="btn btn-primary rounded-pill px-4"
-                disabled={isSubmitting || !newCommentContent.trim()}
-              >
-                {isSubmitting ? 'Posting...' : 'Post Comment'}
-              </button>
+              <div>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={isSubmitting || !newCommentContent.trim()}
+                  loading={isSubmitting}
+                >
+                  Post Comment
+                </Button>
+              </div>
             </form>
           ) : (
-            <div className="alert alert-light border mb-4">
-              Please <a href="/login">log in</a> to join the discussion.
-            </div>
+            <Alert variant="info" className="mb-6">
+              Please <a href="/login" className="link">log in</a> to join the discussion.
+            </Alert>
           )}
 
           {/* Comments List */}
-          <div className="comments-list">
+          <div className="stack stack--md">
             {commentTree.length > 0 ? (
               commentTree.map((comment) => (
                 <CommentItem
@@ -250,12 +254,15 @@ function CommentList({ articleId, initialComments = [], onError }) {
                 />
               ))
             ) : (
-              <p className="text-muted fst-italic">No comments yet. Be the first to share your thoughts!</p>
+              <EmptyState
+                title="No comments yet"
+                description="Be the first to share your thoughts!"
+              />
             )}
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }
 

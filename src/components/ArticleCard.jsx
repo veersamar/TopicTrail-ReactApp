@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { api } from '../services/api';
+import { Badge, Button } from './ui';
 
 function ArticleCard({ article, isAssumedOwner = false, articleTypes = [] }) {
   const { userId } = useAuth();
@@ -24,7 +24,6 @@ function ArticleCard({ article, isAssumedOwner = false, articleTypes = [] }) {
     return new Date(d).toLocaleDateString();
   };
 
-  // Determine if this is a poll type
   const isPoll = () => {
     const typeId = getArticleType();
     const pollTypeObj = articleTypes.find(t =>
@@ -34,25 +33,21 @@ function ArticleCard({ article, isAssumedOwner = false, articleTypes = [] }) {
       const pollTypeId = pollTypeObj.id || pollTypeObj.Id || pollTypeObj.value || pollTypeObj.Value;
       return parseInt(typeId, 10) === parseInt(pollTypeId, 10);
     }
-    // Fallback: check article type name directly if available
     const typeName = article?.articleTypeName || article?.ArticleTypeName || '';
     return typeName.toLowerCase() === 'poll';
   };
 
-  // Get the correct link for the article
   const getArticleLink = () => {
     if (isPoll()) {
       const pollId = getPollId();
-      // If poll has a separate pollId, use it; otherwise use article id
       return `/poll/${pollId || getArticleId()}`;
     }
     return `/articles/${getArticleId()}`;
   };
 
-  // Get edit link (polls use different edit route potentially)
   const getEditLink = () => {
     if (isPoll()) {
-      return null; // Polls don't support editing for now
+      return null;
     }
     return `/edit-article/${getArticleId()}`;
   };
@@ -60,87 +55,60 @@ function ArticleCard({ article, isAssumedOwner = false, articleTypes = [] }) {
   const creatorId = getCreatorId();
   const isOwner = isAssumedOwner || (userId && creatorId && String(userId) === String(creatorId));
 
-  // DEBUG LOG
-  console.log(`ArticleCard [${getTitle()}]:`, {
-    id: getArticleId(),
-    userId,
-    creatorId,
-    isOwner,
-    userIdType: typeof userId,
-    creatorIdType: typeof creatorId,
-    isPoll: isPoll(),
-    articleType: getArticleType()
-  });
+  const answersCount = getCommentsCount();
+  const hasAnswers = answersCount > 0;
 
   return (
-    <div className="d-flex p-3 border-bottom article-list-item position-relative">
+    <article className="article-card">
       {/* Stats Column */}
-      <div className="d-flex flex-column gap-2 me-3 text-end small flex-shrink-0 pt-1" style={{ width: '100px', fontSize: '0.85rem' }}>
-        <div className="text-secondary">
-          <span className="fw-600 me-1">{getLikes()}</span>
-          <span>{isPoll() ? 'responses' : 'votes'}</span>
+      <div className="article-card__stats">
+        <div className="article-card__stat">
+          <span className="article-card__stat-value">{getLikes()}</span>
+          <span className="article-card__stat-label">{isPoll() ? 'responses' : 'votes'}</span>
         </div>
-        <div className={`rounded px-1 ${getCommentsCount() > 0 ? 'border border-success text-success' : 'text-secondary'}`}>
-          <span className="fw-600 me-1">{getCommentsCount()}</span>
-          <span>answers</span>
+        <div className={`article-card__stat ${hasAnswers ? 'article-card__stat--success' : ''}`}>
+          <span className="article-card__stat-value">{answersCount}</span>
+          <span className="article-card__stat-label">answers</span>
         </div>
-        <div className="text-warning">
-          <span className="fw-600 me-1">{getViews()}</span>
-          <span>views</span>
+        <div className="article-card__stat article-card__stat--muted">
+          <span className="article-card__stat-value">{getViews()}</span>
+          <span className="article-card__stat-label">views</span>
         </div>
       </div>
 
       {/* Content Column */}
-      <div className="flex-grow-1" style={{ minWidth: 0 }}>
-        <h5 className="mb-1" style={{ fontSize: '1.1rem' }}>
-          {isPoll() && <span className="badge bg-primary me-2" style={{ fontSize: '0.65rem' }}>POLL</span>}
-          <Link to={getArticleLink()} className="text-decoration-none text-link fw-normal">
+      <div className="article-card__content">
+        <h3 className="article-card__title">
+          {isPoll() && <Badge variant="primary" size="sm" className="mr-2">POLL</Badge>}
+          <Link to={getArticleLink()} className="article-card__link">
             {getTitle()}
           </Link>
-        </h5>
+        </h3>
 
-        <p className="small text-secondary mb-2 text-truncate-2" style={{ lineHeight: '1.4' }}>
+        <p className="article-card__excerpt">
           {getDescription().substring(0, 200)}...
         </p>
 
-        <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
-          {/* Tags (Using Category as Tag for now) */}
-          <div className="d-flex gap-1">
-            <span className="badge fw-normal"
-              style={{
-                backgroundColor: '#E1ECF4',
-                color: '#39739D',
-                fontSize: '0.75rem',
-                borderRadius: '4px'
-              }}>
-              {getCategory().toLowerCase()}
-            </span>
-            {isPoll() && (
-              <span className="badge fw-normal"
-                style={{
-                  backgroundColor: '#F0E6FF',
-                  color: '#6B46C1',
-                  fontSize: '0.75rem',
-                  borderRadius: '4px'
-                }}>
-                poll
-              </span>
-            )}
+        <div className="article-card__footer">
+          <div className="article-card__tags">
+            <Badge variant="secondary">{getCategory().toLowerCase()}</Badge>
+            {isPoll() && <Badge variant="accent">poll</Badge>}
           </div>
 
-          {/* Meta */}
-          <div className="d-flex align-items-center gap-1 small text-muted ms-auto">
+          <div className="article-card__meta">
             {isOwner && getEditLink() && (
-              <Link to={getEditLink()} className="text-decoration-none me-2 text-primary">
-                <i className="bi bi-pencil-square me-1"></i>Edit
+              <Link to={getEditLink()} className="article-card__edit-link">
+                Edit
               </Link>
             )}
-            <span style={{ color: '#0074CC' }}>{getCreator()}</span>
-            <span>{isPoll() ? 'created' : 'asked'} {getDate()}</span>
+            <span className="article-card__author">{getCreator()}</span>
+            <span className="article-card__date">
+              {isPoll() ? 'created' : 'asked'} {getDate()}
+            </span>
           </div>
         </div>
       </div>
-    </div>
+    </article>
   );
 }
 

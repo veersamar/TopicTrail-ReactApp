@@ -103,7 +103,7 @@ function Profile() {
   // ========== RENDER LOADING ==========
   if (loading) {
     return (
-      <div className="container-lg my-5" style={{ maxWidth: '900px' }}>
+      <div className="profile-page py-4">
         <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '400px' }}>
           <div className="text-center">
             <div className="spinner-border text-primary mb-3" role="status">
@@ -118,7 +118,7 @@ function Profile() {
 
   // ========== RENDER MAIN CONTENT ==========
   return (
-    <div className="container-lg my-5" style={{ maxWidth: '900px' }}>
+    <div className="profile-page py-4">
       {/* Back Button */}
       <button
         className="btn btn-outline-primary mb-4"

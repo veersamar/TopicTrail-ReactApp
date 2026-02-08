@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import './LoginPage.css';
+import { Card, Button, Input, Alert, Spinner } from '../components/ui';
 
 function LoginPage() {
   const [formData, setFormData] = useState({
@@ -22,11 +22,9 @@ function LoginPage() {
     }
   }, [isAuthenticated, navigate]);
 
-  // Check for success message from other pages (e.g. OTP verification)
   useEffect(() => {
     if (location.state?.message) {
       setMessage(location.state.message);
-      // Optional: clear state so refresh doesn't show it again, but usually fine
       window.history.replaceState({}, document.title);
     }
   }, [location]);
@@ -67,85 +65,75 @@ function LoginPage() {
   };
 
   return (
-    <div className="login-container">
-      <div className="login-card glass-panel fade-in">
-        <div className="text-center mb-4">
-          <h1 className="brand-title">TopicTrail</h1>
-          <p className="text-muted">Welcome back! Please login to your account.</p>
+    <div className="auth-page">
+      <Card className="auth-card">
+        <div className="auth-header">
+          <h1 className="auth-brand">TopicTrail</h1>
+          <p className="text-secondary">Welcome back! Please login to your account.</p>
         </div>
 
         {message && (
-          <div className="alert alert-success fade-in mb-3">
-            <i className="bi bi-check-circle-fill me-2"></i>
-            <span>{message}</span>
-          </div>
+          <Alert variant="success" className="mb-4">
+            {message}
+          </Alert>
         )}
 
         {error && (
-          <div className="alert alert-danger fade-in">
-            <i className="bi bi-exclamation-triangle-fill"></i>
-            <span>{error}</span>
-          </div>
+          <Alert variant="error" className="mb-4">
+            {error}
+          </Alert>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-group mb-3">
-            <label className="form-label">Email Address</label>
-            <div className="input-with-icon">
-              <i className="bi bi-envelope"></i>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="Enter your email"
-                disabled={loading}
-              />
-            </div>
-          </div>
+        <form onSubmit={handleSubmit} className="auth-form">
+          <Input
+            label="Email Address"
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            placeholder="Enter your email"
+            disabled={loading}
+          />
 
-          <div className="form-group mb-4">
-            <label className="form-label">Password</label>
-            <div className="input-with-icon">
-              <i className="bi bi-lock"></i>
-              <input
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="Enter your password"
-                disabled={loading}
-              />
-            </div>
-          </div>
+          <Input
+            label="Password"
+            type="password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            placeholder="Enter your password"
+            disabled={loading}
+          />
 
-          <div className="d-flex justify-content-end mb-4">
-            <Link to="/forgot-password" style={{ fontSize: '0.9rem', color: 'var(--primary-color)', textDecoration: 'none' }}>
+          <div className="auth-forgot">
+            <Link to="/forgot-password" className="link text-sm">
               Forgot Password?
             </Link>
           </div>
 
-          <button
+          <Button
             type="submit"
-            className="btn btn-primary w-100 btn-lg mb-3"
+            variant="primary"
+            size="lg"
+            className="w-full"
             disabled={loading}
           >
             {loading ? (
               <>
-                <div className="spinner-border spinner-border-sm me-2"></div>
+                <Spinner size="sm" />
                 Logging in...
               </>
             ) : (
               'Sign In'
             )}
-          </button>
+          </Button>
 
-          <div className="text-center">
+          <p className="auth-footer">
             <span className="text-secondary">New to TopicTrail? </span>
-            <Link to="/register" className="fw-600">Create an account</Link>
-          </div>
+            <Link to="/register" className="link font-medium">Create an account</Link>
+          </p>
         </form>
-      </div>
+      </Card>
     </div>
   );
 }

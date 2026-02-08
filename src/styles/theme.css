@@ -1,0 +1,266 @@
+/* ============================================================
+   THEME SYSTEM - Light & Dark Mode
+   ============================================================
+   Uses CSS custom properties for runtime theme switching.
+   All color values should reference theme variables, never
+   hard-coded colors in components.
+   ============================================================ */
+
+/* ==========================================================
+   LIGHT THEME (Default)
+   ========================================================== */
+:root,
+[data-theme="light"] {
+  /* Brand Colors */
+  --color-primary-50: #fff7ed;
+  --color-primary-100: #ffedd5;
+  --color-primary-200: #fed7aa;
+  --color-primary-300: #fdba74;
+  --color-primary-400: #fb923c;
+  --color-primary-500: #f97316;  /* Primary brand */
+  --color-primary-600: #ea580c;
+  --color-primary-700: #c2410c;
+  --color-primary-800: #9a3412;
+  --color-primary-900: #7c2d12;
+
+  /* Accent Colors - Blue */
+  --color-accent-50: #eff6ff;
+  --color-accent-100: #dbeafe;
+  --color-accent-200: #bfdbfe;
+  --color-accent-300: #93c5fd;
+  --color-accent-400: #60a5fa;
+  --color-accent-500: #3b82f6;  /* Accent */
+  --color-accent-600: #2563eb;
+  --color-accent-700: #1d4ed8;
+  --color-accent-800: #1e40af;
+  --color-accent-900: #1e3a8a;
+
+  /* Neutral Colors */
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f4f4f5;
+  --color-neutral-200: #e4e4e7;
+  --color-neutral-300: #d4d4d8;
+  --color-neutral-400: #a1a1aa;
+  --color-neutral-500: #71717a;
+  --color-neutral-600: #52525b;
+  --color-neutral-700: #3f3f46;
+  --color-neutral-800: #27272a;
+  --color-neutral-900: #18181b;
+  --color-neutral-950: #09090b;
+
+  /* Semantic Colors */
+  --color-success-50: #f0fdf4;
+  --color-success-100: #dcfce7;
+  --color-success-500: #22c55e;
+  --color-success-600: #16a34a;
+  --color-success-700: #15803d;
+
+  --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+
+  --color-error-50: #fef2f2;
+  --color-error-100: #fee2e2;
+  --color-error-500: #ef4444;
+  --color-error-600: #dc2626;
+  --color-error-700: #b91c1c;
+
+  --color-info-50: #eff6ff;
+  --color-info-100: #dbeafe;
+  --color-info-500: #3b82f6;
+  --color-info-600: #2563eb;
+  --color-info-700: #1d4ed8;
+
+  /* ==========================================================
+     SEMANTIC THEME TOKENS
+     These are the tokens that should be used in components
+     ========================================================== */
+
+  /* Background Colors */
+  --bg-primary: #ffffff;
+  --bg-secondary: var(--color-neutral-50);
+  --bg-tertiary: var(--color-neutral-100);
+  --bg-inverse: var(--color-neutral-900);
+  --bg-brand: var(--color-primary-500);
+  --bg-brand-subtle: var(--color-primary-50);
+  --bg-accent: var(--color-accent-500);
+  --bg-accent-subtle: var(--color-accent-50);
+
+  /* Surface Colors (cards, panels) */
+  --surface-primary: #ffffff;
+  --surface-secondary: var(--color-neutral-50);
+  --surface-elevated: #ffffff;
+  --surface-overlay: rgba(0, 0, 0, 0.5);
+
+  /* Text Colors */
+  --text-primary: var(--color-neutral-900);
+  --text-secondary: var(--color-neutral-600);
+  --text-tertiary: var(--color-neutral-500);
+  --text-disabled: var(--color-neutral-400);
+  --text-inverse: #ffffff;
+  --text-brand: var(--color-primary-600);
+  --text-accent: var(--color-accent-600);
+  --text-link: var(--color-accent-600);
+  --text-link-hover: var(--color-accent-700);
+
+  /* Border Colors */
+  --border-primary: var(--color-neutral-200);
+  --border-secondary: var(--color-neutral-100);
+  --border-focus: var(--color-primary-500);
+  --border-error: var(--color-error-500);
+
+  /* Interactive States */
+  --interactive-normal: var(--color-neutral-100);
+  --interactive-hover: var(--color-neutral-200);
+  --interactive-active: var(--color-neutral-300);
+  --interactive-selected: var(--color-primary-50);
+  --interactive-disabled: var(--color-neutral-100);
+
+  /* Button Colors */
+  --btn-primary-bg: var(--color-primary-500);
+  --btn-primary-bg-hover: var(--color-primary-600);
+  --btn-primary-text: #ffffff;
+  
+  --btn-secondary-bg: transparent;
+  --btn-secondary-bg-hover: var(--color-neutral-100);
+  --btn-secondary-border: var(--color-neutral-300);
+  --btn-secondary-text: var(--color-neutral-700);
+  
+  --btn-ghost-bg: transparent;
+  --btn-ghost-bg-hover: var(--color-neutral-100);
+  --btn-ghost-text: var(--color-neutral-600);
+  
+  --btn-danger-bg: var(--color-error-500);
+  --btn-danger-bg-hover: var(--color-error-600);
+  --btn-danger-text: #ffffff;
+
+  /* Input Colors */
+  --input-bg: #ffffff;
+  --input-border: var(--color-neutral-300);
+  --input-border-hover: var(--color-neutral-400);
+  --input-border-focus: var(--color-primary-500);
+  --input-placeholder: var(--color-neutral-400);
+  --input-disabled-bg: var(--color-neutral-100);
+
+  /* Focus Ring */
+  --ring-color: var(--color-primary-500);
+  --ring-color-offset: #ffffff;
+
+  /* Code/Syntax */
+  --code-bg: var(--color-neutral-100);
+  --code-text: var(--color-neutral-800);
+
+  /* Scrollbar */
+  --scrollbar-track: var(--color-neutral-100);
+  --scrollbar-thumb: var(--color-neutral-300);
+  --scrollbar-thumb-hover: var(--color-neutral-400);
+}
+
+/* ==========================================================
+   DARK THEME
+   ========================================================== */
+[data-theme="dark"] {
+  /* Background Colors */
+  --bg-primary: var(--color-neutral-950);
+  --bg-secondary: var(--color-neutral-900);
+  --bg-tertiary: var(--color-neutral-800);
+  --bg-inverse: var(--color-neutral-50);
+  --bg-brand: var(--color-primary-500);
+  --bg-brand-subtle: rgba(249, 115, 22, 0.15);
+  --bg-accent: var(--color-accent-500);
+  --bg-accent-subtle: rgba(59, 130, 246, 0.15);
+
+  /* Surface Colors */
+  --surface-primary: var(--color-neutral-900);
+  --surface-secondary: var(--color-neutral-800);
+  --surface-elevated: var(--color-neutral-800);
+  --surface-overlay: rgba(0, 0, 0, 0.7);
+
+  /* Text Colors */
+  --text-primary: var(--color-neutral-50);
+  --text-secondary: var(--color-neutral-400);
+  --text-tertiary: var(--color-neutral-500);
+  --text-disabled: var(--color-neutral-600);
+  --text-inverse: var(--color-neutral-900);
+  --text-brand: var(--color-primary-400);
+  --text-accent: var(--color-accent-400);
+  --text-link: var(--color-accent-400);
+  --text-link-hover: var(--color-accent-300);
+
+  /* Border Colors */
+  --border-primary: var(--color-neutral-700);
+  --border-secondary: var(--color-neutral-800);
+  --border-focus: var(--color-primary-500);
+  --border-error: var(--color-error-500);
+
+  /* Interactive States */
+  --interactive-normal: var(--color-neutral-800);
+  --interactive-hover: var(--color-neutral-700);
+  --interactive-active: var(--color-neutral-600);
+  --interactive-selected: rgba(249, 115, 22, 0.2);
+  --interactive-disabled: var(--color-neutral-800);
+
+  /* Button Colors */
+  --btn-primary-bg: var(--color-primary-500);
+  --btn-primary-bg-hover: var(--color-primary-400);
+  --btn-primary-text: #ffffff;
+  
+  --btn-secondary-bg: transparent;
+  --btn-secondary-bg-hover: var(--color-neutral-800);
+  --btn-secondary-border: var(--color-neutral-600);
+  --btn-secondary-text: var(--color-neutral-200);
+  
+  --btn-ghost-bg: transparent;
+  --btn-ghost-bg-hover: var(--color-neutral-800);
+  --btn-ghost-text: var(--color-neutral-300);
+  
+  --btn-danger-bg: var(--color-error-500);
+  --btn-danger-bg-hover: var(--color-error-400);
+  --btn-danger-text: #ffffff;
+
+  /* Input Colors */
+  --input-bg: var(--color-neutral-900);
+  --input-border: var(--color-neutral-700);
+  --input-border-hover: var(--color-neutral-600);
+  --input-border-focus: var(--color-primary-500);
+  --input-placeholder: var(--color-neutral-500);
+  --input-disabled-bg: var(--color-neutral-800);
+
+  /* Focus Ring */
+  --ring-color: var(--color-primary-500);
+  --ring-color-offset: var(--color-neutral-900);
+
+  /* Code/Syntax */
+  --code-bg: var(--color-neutral-800);
+  --code-text: var(--color-neutral-200);
+
+  /* Scrollbar */
+  --scrollbar-track: var(--color-neutral-800);
+  --scrollbar-thumb: var(--color-neutral-600);
+  --scrollbar-thumb-hover: var(--color-neutral-500);
+
+  /* Shadows need adjustment for dark mode */
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.4), 0 8px 10px -6px rgb(0 0 0 / 0.4);
+}
+
+/* ==========================================================
+   COLOR SCHEME PREFERENCE
+   ========================================================== */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* Auto dark mode when no explicit theme is set */
+    --bg-primary: var(--color-neutral-950);
+    --bg-secondary: var(--color-neutral-900);
+    --bg-tertiary: var(--color-neutral-800);
+    --surface-primary: var(--color-neutral-900);
+    --text-primary: var(--color-neutral-50);
+    --text-secondary: var(--color-neutral-400);
+    --border-primary: var(--color-neutral-700);
+  }
+}

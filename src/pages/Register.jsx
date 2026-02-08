@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import './Register.css'; // We will update this CSS file to match the new theme
+import { Card, Button, Input, Alert, Spinner } from '../components/ui';
 
 function Register() {
   const [formData, setFormData] = useState({
@@ -26,7 +26,6 @@ function Register() {
       ...prev,
       [name]: value
     }));
-    // Clear error for this field
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
@@ -84,7 +83,6 @@ function Register() {
     setLoading(true);
 
     try {
-      // Pass the whole formData object which now matches API expectations
       const result = await register(formData);
 
       if (result.success) {
@@ -98,165 +96,137 @@ function Register() {
           });
         }, 1500);
       } else {
-        setMessage({ type: 'danger', text: result.error });
+        setMessage({ type: 'error', text: result.error });
       }
     } catch (error) {
       console.error(error);
-      setMessage({ type: 'danger', text: 'An unexpected error occurred' });
+      setMessage({ type: 'error', text: 'An unexpected error occurred' });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="register-container">
-      <div className="register-bg-decoration d-none d-md-block"></div>
-
-      <div className="register-card">
-        <div className="register-logo">
-          <i className="bi bi-chat-square-text logo-icon" style={{ color: 'var(--primary-color)' }}></i>
-          <h1 className="logo-text">Join TopicTrail</h1>
-          <p className="logo-tagline">Create your account to start sharing knowledge</p>
+    <div className="auth-page">
+      <Card className="auth-card auth-card--wide">
+        <div className="auth-header">
+          <h1 className="auth-brand">Join TopicTrail</h1>
+          <p className="text-secondary">Create your account to start sharing knowledge</p>
         </div>
 
         {message.text && (
-          <div className={`alert alert-${message.type} alert-dismissible fade show`} role="alert">
-            <div className="d-flex align-items-center gap-2">
-              <i className={`bi ${message.type === 'success' ? 'bi-check-circle' : 'bi-exclamation-circle'}`}></i>
-              <span>{message.text}</span>
-            </div>
-            <button type="button" className="btn-close" onClick={() => setMessage({ type: '', text: '' })}></button>
-          </div>
+          <Alert 
+            variant={message.type === 'success' ? 'success' : 'error'} 
+            className="mb-4"
+            dismissible
+            onDismiss={() => setMessage({ type: '', text: '' })}
+          >
+            {message.text}
+          </Alert>
         )}
 
-        <form onSubmit={handleSubmit} className="register-form">
-
-          <div className="form-group">
-            <label className="form-label">Username</label>
-            <input
-              type="text"
-              name="Username"
-              className={`form-control ${errors.Username ? 'is-invalid' : ''}`}
-              value={formData.Username}
-              onChange={handleChange}
-              placeholder="johndoe"
-              disabled={loading}
-            />
-            {errors.Username && <div className="invalid-feedback">{errors.Username}</div>}
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Full Name</label>
-            <input
-              type="text"
-              name="Name"
-              className={`form-control ${errors.Name ? 'is-invalid' : ''}`}
-              value={formData.Name}
-              onChange={handleChange}
-              placeholder="John Doe"
-              disabled={loading}
-            />
-            {errors.Name && <div className="invalid-feedback">{errors.Name}</div>}
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Email</label>
-            <input
-              type="email"
-              name="Email"
-              className={`form-control ${errors.Email ? 'is-invalid' : ''}`}
-              value={formData.Email}
-              onChange={handleChange}
-              placeholder="name@example.com"
-              disabled={loading}
-            />
-            {errors.Email && <div className="invalid-feedback">{errors.Email}</div>}
-          </div>
-
-          <div className="row">
-            <div className="col-md-6">
-              <div className="form-group">
-                <label className="form-label">Mobile</label>
-                <input
-                  type="text"
-                  name="Mobile"
-                  className={`form-control ${errors.Mobile ? 'is-invalid' : ''}`}
-                  value={formData.Mobile}
-                  onChange={handleChange}
-                  placeholder="+1234567890"
-                  disabled={loading}
-                />
-                {errors.Mobile && <div className="invalid-feedback">{errors.Mobile}</div>}
-              </div>
-            </div>
-            <div className="col-md-6">
-              <div className="form-group">
-                <label className="form-label">Profession</label>
-                <input
-                  type="text"
-                  name="Profession"
-                  className={`form-control ${errors.Profession ? 'is-invalid' : ''}`}
-                  value={formData.Profession}
-                  onChange={handleChange}
-                  placeholder="Developer"
-                  disabled={loading}
-                />
-                {errors.Profession && <div className="invalid-feedback">{errors.Profession}</div>}
-              </div>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Password</label>
-            <input
-              type="password"
-              name="Password"
-              className={`form-control ${errors.Password ? 'is-invalid' : ''}`}
-              value={formData.Password}
-              onChange={handleChange}
-              placeholder="Create a password"
-              disabled={loading}
-            />
-            {errors.Password && <div className="invalid-feedback">{errors.Password}</div>}
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Confirm Password</label>
-            <input
-              type="password"
-              name="ConfirmPassword"
-              className={`form-control ${errors.ConfirmPassword ? 'is-invalid' : ''}`}
-              value={formData.ConfirmPassword}
-              onChange={handleChange}
-              placeholder="Confirm your password"
-              disabled={loading}
-            />
-            {errors.ConfirmPassword && <div className="invalid-feedback">{errors.ConfirmPassword}</div>}
-          </div>
-
-          <button
-            type="submit"
-            className="btn btn-primary w-100 py-2 fw-bold"
+        <form onSubmit={handleSubmit} className="auth-form">
+          <Input
+            label="Username"
+            type="text"
+            name="Username"
+            value={formData.Username}
+            onChange={handleChange}
+            placeholder="johndoe"
             disabled={loading}
-            style={{ fontSize: '1rem', marginTop: '1rem' }}
+            error={errors.Username}
+          />
+
+          <Input
+            label="Full Name"
+            type="text"
+            name="Name"
+            value={formData.Name}
+            onChange={handleChange}
+            placeholder="John Doe"
+            disabled={loading}
+            error={errors.Name}
+          />
+
+          <Input
+            label="Email"
+            type="email"
+            name="Email"
+            value={formData.Email}
+            onChange={handleChange}
+            placeholder="name@example.com"
+            disabled={loading}
+            error={errors.Email}
+          />
+
+          <div className="grid grid--2">
+            <Input
+              label="Mobile"
+              type="text"
+              name="Mobile"
+              value={formData.Mobile}
+              onChange={handleChange}
+              placeholder="+1234567890"
+              disabled={loading}
+              error={errors.Mobile}
+            />
+
+            <Input
+              label="Profession"
+              type="text"
+              name="Profession"
+              value={formData.Profession}
+              onChange={handleChange}
+              placeholder="Developer"
+              disabled={loading}
+              error={errors.Profession}
+            />
+          </div>
+
+          <Input
+            label="Password"
+            type="password"
+            name="Password"
+            value={formData.Password}
+            onChange={handleChange}
+            placeholder="Create a password"
+            disabled={loading}
+            error={errors.Password}
+          />
+
+          <Input
+            label="Confirm Password"
+            type="password"
+            name="ConfirmPassword"
+            value={formData.ConfirmPassword}
+            onChange={handleChange}
+            placeholder="Confirm your password"
+            disabled={loading}
+            error={errors.ConfirmPassword}
+          />
+
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            className="w-full"
+            disabled={loading}
           >
             {loading ? (
               <>
-                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                <Spinner size="sm" />
                 Creating account...
               </>
             ) : (
               'Sign Up'
             )}
-          </button>
+          </Button>
 
-          <div className="register-footer mt-4">
-            <p className="footer-text">
-              Already have an account? <Link to="/login" className="fw-bold">Log in</Link>
-            </p>
-          </div>
+          <p className="auth-footer">
+            Already have an account? <Link to="/login" className="link font-medium">Log in</Link>
+          </p>
         </form>
-      </div>
+      </Card>
     </div>
   );
 }

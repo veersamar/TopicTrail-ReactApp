@@ -141,9 +141,9 @@ function CreateArticlePage() {
 
     // Type configuration
     const typeConfig = {
-        post: { icon: '📝', title: isEditMode ? 'Edit Post' : 'Create New Post', subtitle: isEditMode ? 'Update your article' : 'Share an article or blog with the community' },
-        question: { icon: '❓', title: isEditMode ? 'Edit Question' : 'Ask a Question', subtitle: isEditMode ? 'Update your question' : 'Get answers from the community' },
-        poll: { icon: '📊', title: isEditMode ? 'Edit Poll' : 'Create a Poll', subtitle: isEditMode ? 'Update your poll' : 'Gather opinions from the community' },
+        post: { icon: 'bi-file-earmark-text', title: isEditMode ? 'Edit Post' : 'Create New Post', subtitle: isEditMode ? 'Update your article' : 'Share an article or blog with the community' },
+        question: { icon: 'bi-question-circle', title: isEditMode ? 'Edit Question' : 'Ask a Question', subtitle: isEditMode ? 'Update your question' : 'Get answers from the community' },
+        poll: { icon: 'bi-bar-chart', title: isEditMode ? 'Edit Poll' : 'Create a Poll', subtitle: isEditMode ? 'Update your poll' : 'Gather opinions from the community' },
     };
 
     const currentTypeConfig = typeConfig[articleTypeParam] || typeConfig.post;
@@ -1067,12 +1067,12 @@ function CreateArticlePage() {
         <div className="create-article-page pb-5">
             {/* Page Header */}
             <div className="d-flex align-items-center mb-4">
-                <div className="me-3 p-3 rounded-3" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
-                    <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>{currentTypeConfig.icon}</span>
+                <div className="me-3 d-flex align-items-center justify-content-center rounded-3" style={{ width: '48px', height: '48px', background: 'var(--color-primary, #667eea)', color: 'white' }}>
+                    <i className={`bi ${currentTypeConfig.icon}`} style={{ fontSize: '1.5rem' }}></i>
                 </div>
                 <div>
-                    <h2 className="mb-1 fw-bold">{currentTypeConfig.title}</h2>
-                    <p className="text-muted mb-0">{currentTypeConfig.subtitle}</p>
+                    <h2 className="mb-1 fw-bold" style={{ fontSize: '1.5rem' }}>{currentTypeConfig.title}</h2>
+                    <p className="text-muted mb-0" style={{ fontSize: '0.875rem' }}>{currentTypeConfig.subtitle}</p>
                 </div>
             </div>
 

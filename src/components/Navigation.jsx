@@ -58,7 +58,6 @@ function Navigation({ onCreateClick }) {
       <div className="nav-container">
         {/* Logo */}
         <Link to="/articles" className="navbar-brand">
-          <span className="brand-icon">📰</span>
           <span className="brand-text">TopicTrail</span>
         </Link>
 
@@ -82,7 +81,7 @@ function Navigation({ onCreateClick }) {
               aria-label="Search articles"
             />
             <button className="search-btn" aria-label="Search">
-              🔍
+              Search
             </button>
           </div>
 
@@ -90,12 +89,12 @@ function Navigation({ onCreateClick }) {
           <ul className="nav-links">
             <li>
               <Link to="/articles" className="nav-link" onClick={() => setIsMenuOpen(false)}>
-                🏠 Feed
+                Feed
               </Link>
             </li>
             <li>
               <Link to="/my-articles" className="nav-link" onClick={() => setIsMenuOpen(false)}>
-                ✍️ My Articles
+                My Articles
               </Link>
             </li>
           </ul>
@@ -118,7 +117,6 @@ function Navigation({ onCreateClick }) {
                 className="create-dropdown-item"
                 onClick={() => handleCreateTypeClick('post')}
               >
-                <span className="create-type-icon">📝</span>
                 <div className="create-type-info">
                   <span className="create-type-name">Post</span>
                   <span className="create-type-desc">Share an article or blog</span>
@@ -128,7 +126,6 @@ function Navigation({ onCreateClick }) {
                 className="create-dropdown-item"
                 onClick={() => handleCreateTypeClick('question')}
               >
-                <span className="create-type-icon">❓</span>
                 <div className="create-type-info">
                   <span className="create-type-name">Question</span>
                   <span className="create-type-desc">Ask the community</span>
@@ -138,7 +135,6 @@ function Navigation({ onCreateClick }) {
                 className="create-dropdown-item"
                 onClick={() => handleCreateTypeClick('poll')}
               >
-                <span className="create-type-icon">📊</span>
                 <div className="create-type-info">
                   <span className="create-type-name">Poll</span>
                   <span className="create-type-desc">Create a poll</span>

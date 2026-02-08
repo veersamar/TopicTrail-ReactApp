@@ -8,9 +8,9 @@ function CreateArticleModal({ show, onClose, onSuccess, articleType: propArticle
 
   // Type configuration
   const typeConfig = {
-    post: { icon: '📝', title: 'Create New Post', subtitle: 'Share an article or blog with the community' },
-    question: { icon: '❓', title: 'Ask a Question', subtitle: 'Get answers from the community' },
-    poll: { icon: '📊', title: 'Create a Poll', subtitle: 'Gather opinions from the community' },
+    post: { icon: '', title: 'Create New Post', subtitle: 'Share an article or blog with the community' },
+    question: { icon: '', title: 'Ask a Question', subtitle: 'Get answers from the community' },
+    poll: { icon: '', title: 'Create a Poll', subtitle: 'Gather opinions from the community' },
   };
 
   const currentTypeConfig = typeConfig[propArticleType] || typeConfig.post;

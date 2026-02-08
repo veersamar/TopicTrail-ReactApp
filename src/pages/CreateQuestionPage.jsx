@@ -732,8 +732,8 @@ function CreateQuestionPage() {
         <div className="create-question-page pb-5">
             {/* Page Header */}
             <div className="d-flex align-items-center mb-4">
-                <div className="me-3 p-3 rounded-3" style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
-                    <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>❓</span>
+                <div className="me-3 p-3 rounded-3" style={{ background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', color: 'white' }}>
+                    <span style={{ fontSize: '1.5rem', lineHeight: 1, fontWeight: 'bold' }}>?</span>
                 </div>
                 <div>
                     <h2 className="mb-1 fw-bold">Ask a Question</h2>

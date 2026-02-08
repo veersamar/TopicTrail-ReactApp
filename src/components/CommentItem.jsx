@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import CommentReactions from './CommentReactions';
+import { Avatar, Button, Textarea } from './ui';
 
 // Maximum nesting depth for UI purposes
 const MAX_DEPTH = 4;
@@ -114,54 +115,47 @@ function CommentItem({
 
   // Calculate left margin for nested comments
   const indentStyle = depth > 0 ? { 
-    marginLeft: Math.min(depth * 24, MAX_DEPTH * 24),
-    borderLeft: '2px solid #e5e7eb',
-    paddingLeft: '16px'
+    marginLeft: Math.min(depth * 20, MAX_DEPTH * 20),
+    borderLeft: '2px solid var(--border-secondary)',
+    paddingLeft: 'var(--space-4)'
   } : {};
 
   return (
-    <div className="comment-item mb-3" style={indentStyle}>
-      <div className="d-flex gap-3">
+    <div className="comment-item py-4" style={indentStyle}>
+      <div className="flex gap-3">
         {/* Avatar */}
-        <div
-          className="flex-shrink-0 d-flex align-items-center justify-content-center rounded-circle bg-light text-secondary"
-          style={{ 
-            width: depth > 0 ? '32px' : '40px', 
-            height: depth > 0 ? '32px' : '40px', 
-            fontSize: depth > 0 ? '1rem' : '1.2rem' 
-          }}
-        >
-          <i className="bi bi-person"></i>
-        </div>
+        <Avatar name={creatorName} size={depth > 0 ? 'sm' : 'md'} />
         
         {/* Content */}
-        <div className="flex-grow-1">
+        <div className="flex-1 min-w-0">
           {/* Header */}
-          <div className="d-flex align-items-center mb-1 flex-wrap gap-2">
-            <span className="fw-bold me-2" style={{ fontSize: depth > 0 ? '0.9rem' : '1rem' }}>
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            <span className={`font-semibold ${depth > 0 ? 'text-sm' : ''}`}>
               {creatorName}
             </span>
-            <small className="text-muted">{formattedDate}</small>
+            <span className="text-xs text-tertiary">{formattedDate}</span>
             
             {/* Delete button */}
             {canDelete && (
-              <button
-                className="btn btn-link btn-sm text-danger p-0 ms-auto"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-auto text-error"
                 onClick={handleDelete}
                 title="Delete comment"
               >
-                <i className="bi bi-trash"></i>
-              </button>
+                🗑️
+              </Button>
             )}
           </div>
           
           {/* Comment text */}
-          <div className="text-dark mb-2" style={{ fontSize: depth > 0 ? '0.9rem' : '1rem' }}>
+          <div className={`text-primary mb-3 ${depth > 0 ? 'text-sm' : ''}`}>
             {content}
           </div>
           
           {/* Actions row */}
-          <div className="d-flex align-items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-4 flex-wrap">
             {/* Reactions */}
             <CommentReactions
               commentId={commentId}
@@ -174,54 +168,51 @@ function CommentItem({
             
             {/* Reply button */}
             {canReply && (
-              <button
-                className="btn btn-link btn-sm text-muted p-0"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setShowReplyBox(!showReplyBox)}
-                style={{ fontSize: '0.85rem' }}
               >
-                <i className="bi bi-reply me-1"></i>
-                Reply
-              </button>
+                ↩️ Reply
+              </Button>
             )}
 
             {/* Toggle replies */}
             {localReplies.length > 0 && (
-              <button
-                className="btn btn-link btn-sm text-muted p-0"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setIsExpanded(!isExpanded)}
-                style={{ fontSize: '0.85rem' }}
               >
-                <i className={`bi ${isExpanded ? 'bi-chevron-up' : 'bi-chevron-down'} me-1`}></i>
-                {isExpanded ? 'Hide' : 'Show'} {localReplies.length} {localReplies.length === 1 ? 'reply' : 'replies'}
-              </button>
+                {isExpanded ? '▲' : '▼'} {localReplies.length} {localReplies.length === 1 ? 'reply' : 'replies'}
+              </Button>
             )}
           </div>
           
           {/* Reply input box */}
           {showReplyBox && (
-            <form onSubmit={handleSubmitReply} className="mt-3">
-              <div className="d-flex gap-2">
-                <textarea
-                  className="form-control form-control-sm"
-                  placeholder="Write a reply..."
-                  value={replyContent}
-                  onChange={(e) => setReplyContent(e.target.value)}
-                  disabled={isSubmittingReply}
-                  rows="2"
-                  style={{ resize: 'none' }}
-                />
-              </div>
-              <div className="d-flex gap-2 mt-2">
-                <button
+            <form onSubmit={handleSubmitReply} className="mt-4 stack stack--sm">
+              <Textarea
+                placeholder="Write a reply..."
+                value={replyContent}
+                onChange={(e) => setReplyContent(e.target.value)}
+                disabled={isSubmittingReply}
+                rows={2}
+              />
+              <div className="flex gap-2">
+                <Button
                   type="submit"
-                  className="btn btn-primary btn-sm"
+                  variant="primary"
+                  size="sm"
                   disabled={isSubmittingReply || !replyContent.trim()}
+                  loading={isSubmittingReply}
                 >
-                  {isSubmittingReply ? 'Posting...' : 'Post Reply'}
-                </button>
-                <button
+                  Post Reply
+                </Button>
+                <Button
                   type="button"
-                  className="btn btn-outline-secondary btn-sm"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     setShowReplyBox(false);
                     setReplyContent('');
@@ -229,7 +220,7 @@ function CommentItem({
                   disabled={isSubmittingReply}
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </form>
           )}
@@ -238,7 +229,7 @@ function CommentItem({
       
       {/* Nested replies */}
       {isExpanded && localReplies.length > 0 && (
-        <div className="replies-container mt-3">
+        <div className="mt-4">
           {localReplies.map((reply) => (
             <CommentItem
               key={reply.id || reply.Id}

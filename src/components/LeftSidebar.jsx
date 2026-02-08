@@ -7,81 +7,58 @@ function LeftSidebar() {
     const currentType = query.get('type');
     const isArticlesPage = location.pathname === '/articles';
 
+    const navItems = [
+        { path: '/articles', label: 'Home', isActive: isArticlesPage && !currentType },
+    ];
+
+    const filterItems = [
+        { path: '/articles?type=post', label: 'Posts', isActive: isArticlesPage && currentType === 'post' },
+        { path: '/articles?type=question', label: 'Questions', isActive: isArticlesPage && currentType === 'question' },
+        { path: '/polls', label: 'Polls', isActive: location.pathname === '/polls' },
+    ];
+
+    const discoverItems = [
+        { path: '/communities', label: 'Communities', isActive: location.pathname.startsWith('/communities') },
+        { path: '/tags', label: 'Tags', isActive: location.pathname === '/tags' },
+        { path: '/users', label: 'Users', isActive: location.pathname === '/users' },
+    ];
+
+    const NavLink = ({ path, label, isActive }) => (
+        <li>
+            <Link
+                to={path}
+                className={`sidebar-nav-link ${isActive ? 'sidebar-nav-link--active' : ''}`}
+            >
+                {label}
+            </Link>
+        </li>
+    );
+
     return (
-        <nav className="left-sidebar pt-4 sticky-top" style={{ top: '60px', height: 'calc(100vh - 60px)', overflowY: 'auto' }}>
-            <ul className="list-unstyled">
-                {/* Main Feeds */}
-                <li className="mb-2">
-                    <Link
-                        to="/articles"
-                        className={`d-block px-3 py-2 text-decoration-none small ${isArticlesPage && !currentType ? 'fw-bold text-dark border-end border-3 border-orange' : 'text-secondary'}`}
-                        style={{
-                            backgroundColor: isArticlesPage && !currentType ? '#F1F2F3' : 'transparent',
-                            borderColor: isArticlesPage && !currentType ? 'var(--primary-color)' : 'transparent'
-                        }}
-                    >
-                        🏠 Home
-                    </Link>
-                </li>
-
-                <li className="mb-1 px-3 small text-uppercase text-muted fw-bold mt-3" style={{ fontSize: '0.75rem' }}>
-                    Filter By Type
-                </li>
-
-                <li className="mb-0">
-                    <Link
-                        to="/articles?type=post"
-                        className={`d-flex align-items-center gap-2 px-3 py-2 text-decoration-none small ${isArticlesPage && currentType === 'post' ? 'fw-bold text-dark bg-light border-end border-3 border-primary' : 'text-secondary'}`}
-                    >
-                        📝 Posts
-                    </Link>
-                </li>
-                <li className="mb-0">
-                    <Link
-                        to="/articles?type=question"
-                        className={`d-flex align-items-center gap-2 px-3 py-2 text-decoration-none small ${isArticlesPage && currentType === 'question' ? 'fw-bold text-dark bg-light border-end border-3 border-primary' : 'text-secondary'}`}
-                    >
-                        ❓ Questions
-                    </Link>
-                </li>
-                <li className="mb-0">
-                    <Link
-                        to="/polls"
-                        className={`d-flex align-items-center gap-2 px-3 py-2 text-decoration-none small ${location.pathname === '/polls' ? 'fw-bold text-dark bg-light border-end border-3 border-primary' : 'text-secondary'}`}
-                    >
-                        📊 Polls
-                    </Link>
-                </li>
-
-                <li className="mb-1 px-3 small text-uppercase text-muted fw-bold mt-3" style={{ fontSize: '0.75rem' }}>
-                    Discover
-                </li>
-
-                <li>
-                    <Link 
-                        to="/communities" 
-                        className={`d-block px-3 py-2 text-decoration-none small ${location.pathname === '/communities' || location.pathname.startsWith('/communities/') ? 'fw-bold text-dark bg-light' : 'text-secondary'}`}
-                    >
-                        🏘️ Communities
-                    </Link>
-                </li>
-                <li>
-                    <Link 
-                        to="/tags" 
-                        className={`d-block px-3 py-2 text-decoration-none small ${location.pathname === '/tags' ? 'fw-bold text-dark bg-light' : 'text-secondary'}`}
-                    >
-                        🏷️ Tags
-                    </Link>
-                </li>
-                <li>
-                    <Link 
-                        to="/users" 
-                        className={`d-block px-3 py-2 text-decoration-none small ${location.pathname === '/users' ? 'fw-bold text-dark bg-light' : 'text-secondary'}`}
-                    >
-                        👥 Users
-                    </Link>
-                </li>
+        <nav className="sidebar-nav">
+            <ul className="stack stack--xs">
+                {navItems.map(item => (
+                    <NavLink key={item.path} {...item} />
+                ))}
             </ul>
+
+            <div className="sidebar-section">
+                <h4 className="heading-small mb-2">Filter By Type</h4>
+                <ul className="stack stack--xs">
+                    {filterItems.map(item => (
+                        <NavLink key={item.path} {...item} />
+                    ))}
+                </ul>
+            </div>
+
+            <div className="sidebar-section">
+                <h4 className="heading-small mb-2">Discover</h4>
+                <ul className="stack stack--xs">
+                    {discoverItems.map(item => (
+                        <NavLink key={item.path} {...item} />
+                    ))}
+                </ul>
+            </div>
         </nav>
     );
 }

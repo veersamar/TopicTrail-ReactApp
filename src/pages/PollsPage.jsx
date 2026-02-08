@@ -1,33 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { storage } from '../utils/storage';
-
-// ========== VOTE PERSISTENCE HELPERS ==========
-const VOTED_POLLS_KEY = 'votedPolls';
-
-const getVotedPolls = () => {
-    return storage.get(VOTED_POLLS_KEY) || {};
-};
-
-const getAnonymousSessionId = () => {
-    let sessionId = localStorage.getItem('poll_anonymous_session');
-    if (!sessionId) {
-        sessionId = 'anon_' + Math.random().toString(36).substring(2, 15);
-        localStorage.setItem('poll_anonymous_session', sessionId);
-    }
-    return sessionId;
-};
-
-const hasVotedLocally = (pollId, userId, anonymousSessionId) => {
-    const votedPolls = getVotedPolls();
-    const key = userId || anonymousSessionId;
-    return votedPolls[key]?.includes(pollId) || false;
-};
 
 function PollsPage() {
-    const { token, userId } = useAuth();
+    const { token } = useAuth();
     const navigate = useNavigate();
     const [polls, setPolls] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -78,18 +55,6 @@ function PollsPage() {
         return filtered;
     }, [polls, filterMode]);
 
-    // Check if user has voted on a specific poll
-    const hasUserVoted = useCallback((poll) => {
-        const pollId = poll.id || poll.Id || poll.pollId || poll.PollId;
-        // Check backend flag first
-        if (poll.hasVoted || poll.HasVoted || poll.userVote || poll.UserVote) {
-            return true;
-        }
-        // Check local storage
-        const anonymousId = getAnonymousSessionId();
-        return hasVotedLocally(pollId, userId, anonymousId);
-    }, [userId]);
-
     const formatDate = (dateString) => {
         if (!dateString) return 'No deadline';
         const date = new Date(dateString);
@@ -127,34 +92,28 @@ function PollsPage() {
 
     return (
         <div className="polls-page">
-            {/* Header Section */}
-            <div className="d-flex justify-content-between align-items-center mb-3 border-bottom pb-3">
-                <h3 className="mb-0 fw-normal">📊 Polls</h3>
-                <button 
-                    className="btn btn-primary btn-sm"
-                    onClick={() => navigate('/create-poll')}
-                >
-                    + Create Poll
-                </button>
-            </div>
+            {/* Page Header - matches ArticlesFeed style */}
+            <header className="page-header">
+                <h1 className="page-header__title">Polls</h1>
+            </header>
 
-            <div className="d-flex justify-content-between align-items-center mb-3">
-                <div className="fs-5 text-secondary">{filteredPolls.length} polls</div>
+            <div className="feed__toolbar">
+                <span className="text-sm text-secondary">{filteredPolls.length} polls</span>
 
-                <div className="btn-group btn-group-sm outline-group" role="group">
+                <div className="btn-group">
                     <button
                         type="button"
-                        className={`btn btn-outline-secondary ${filterMode === 'newest' ? 'active' : ''}`}
+                        className={`btn btn-sm ${filterMode === 'newest' ? 'btn-secondary btn-group--active' : 'btn-ghost'}`}
                         onClick={() => setFilterMode('newest')}
                     >Newest</button>
                     <button
                         type="button"
-                        className={`btn btn-outline-secondary ${filterMode === 'active' ? 'active' : ''}`}
+                        className={`btn btn-sm ${filterMode === 'active' ? 'btn-secondary btn-group--active' : 'btn-ghost'}`}
                         onClick={() => setFilterMode('active')}
                     >Active</button>
                     <button
                         type="button"
-                        className={`btn btn-outline-secondary ${filterMode === 'ending-soon' ? 'active' : ''}`}
+                        className={`btn btn-sm ${filterMode === 'ending-soon' ? 'btn-secondary btn-group--active' : 'btn-ghost'}`}
                         onClick={() => setFilterMode('ending-soon')}
                     >Ending Soon</button>
                 </div>
@@ -164,70 +123,77 @@ function PollsPage() {
                 <div className="alert alert-danger">{error}</div>
             )}
 
-            {/* Polls List */}
-            <div className="d-flex flex-column border-top">
+            {/* Polls List - matches ArticleCard style */}
+            <div className="feed__list">
                 {filteredPolls.length > 0 ? (
                     filteredPolls.map(poll => {
                         const pollId = poll.id || poll.Id || poll.pollId || poll.PollId;
-                        const hasVoted = hasUserVoted(poll);
                         const endDate = poll.endDate || poll.EndDate;
                         const isPollEnded = endDate && new Date(endDate) < new Date();
+                        const voteCount = poll.voteCount || poll.VoteCount || poll.totalVotes || 0;
+                        const questionCount = poll.questionCount || poll.QuestionCount || 1;
+                        const creatorName = poll.creatorName || poll.CreatorName || 'Anonymous';
+                        const createdDate = poll.createdOn || poll.CreatedOn || poll.createdDate || poll.CreatedDate;
                         
                         return (
-                            <div 
+                            <article 
                                 key={pollId} 
-                                className="poll-card p-3 border-bottom"
-                                style={{ cursor: 'pointer' }}
-                                onClick={() => navigate(`/poll/${pollId}`)}
+                                className="article-card"
                             >
-                                <div className="d-flex justify-content-between align-items-start">
-                                    <div className="flex-grow-1">
-                                        <h5 className="mb-1">
-                                            <Link 
-                                                to={`/poll/${pollId}`}
-                                                className="text-decoration-none text-dark"
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                {poll.title || poll.Title}
-                                            </Link>
-                                        </h5>
-                                        {(poll.description || poll.Description) && (
-                                            <p className="text-muted small mb-2 text-truncate-2">
-                                                {poll.description || poll.Description}
-                                            </p>
-                                        )}
-                                        <div className="d-flex flex-wrap gap-3 small text-muted align-items-center">
-                                            {(poll.creatorName || poll.CreatorName) && (
-                                                <span>👤 {poll.creatorName || poll.CreatorName}</span>
-                                            )}
-                                            <span>📅 Created: {formatDate(poll.createdOn || poll.CreatedOn || poll.createdDate || poll.CreatedDate)}</span>
-                                            {endDate && (
-                                                <span className={isPollEnded ? 'text-danger' : 'text-warning'}>
-                                                    ⏰ {getTimeRemaining(endDate)}
-                                                </span>
-                                            )}
-                                            {(poll.voteCount !== undefined || poll.VoteCount !== undefined || poll.totalVotes !== undefined) && (
-                                                <span>🗳️ {poll.voteCount || poll.VoteCount || poll.totalVotes || 0} votes</span>
-                                            )}
-                                            {(poll.questionCount !== undefined || poll.QuestionCount !== undefined) && (
-                                                <span>❓ {poll.questionCount || poll.QuestionCount || 1} questions</span>
-                                            )}
+                                {/* Stats Column */}
+                                <div className="article-card__stats">
+                                    <div className="article-card__stat">
+                                        <span className="article-card__stat-value">{voteCount}</span>
+                                        <span className="article-card__stat-label">votes</span>
+                                    </div>
+                                    <div className="article-card__stat">
+                                        <span className="article-card__stat-value">{questionCount}</span>
+                                        <span className="article-card__stat-label">questions</span>
+                                    </div>
+                                    {endDate && (
+                                        <div className={`article-card__stat ${isPollEnded ? 'article-card__stat--danger' : 'article-card__stat--warning'}`}>
+                                            <span className="article-card__stat-value" style={{ fontSize: '0.75rem' }}>
+                                                {getTimeRemaining(endDate)}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Content Column */}
+                                <div className="article-card__content">
+                                    <h3 className="article-card__title">
+                                        <Link 
+                                            to={`/poll/${pollId}`}
+                                            className="article-card__link"
+                                        >
+                                            {poll.title || poll.Title}
+                                        </Link>
+                                    </h3>
+
+                                    {(poll.description || poll.Description) && (
+                                        <p className="article-card__excerpt">
+                                            {(poll.description || poll.Description).substring(0, 200)}...
+                                        </p>
+                                    )}
+
+                                    <div className="article-card__footer">
+                                        <div className="article-card__tags">
+                                            <span className="badge badge--secondary">poll</span>
+                                        </div>
+
+                                        <div className="article-card__meta">
+                                            <span className="article-card__author">{creatorName}</span>
+                                            <span className="article-card__date">created {formatDate(createdDate)}</span>
                                         </div>
                                     </div>
-                                    <div className="ms-3 d-flex flex-column gap-1 align-items-end">
-                                        <span className={`badge ${poll.isPublic || poll.IsPublic ? 'bg-success' : 'bg-secondary'}`}>
-                                            {poll.isPublic || poll.IsPublic ? 'Public' : 'Private'}
-                                        </span>
-                                    </div>
                                 </div>
-                            </div>
+                            </article>
                         );
                     })
                 ) : (
-                    <div className="py-5 text-center text-muted">
-                        <div className="mb-3" style={{ fontSize: '3rem' }}>📊</div>
-                        <h5>No polls yet</h5>
-                        <p className="mb-3">Be the first to create a poll and gather opinions!</p>
+                    <div className="empty-state">
+                        <h4 className="empty-state__title">No polls yet</h4>
+                        <p className="empty-state__description">Be the first to create a poll and gather opinions!</p>
                         <button 
                             className="btn btn-primary"
                             onClick={() => navigate('/create-poll')}
@@ -237,31 +203,6 @@ function PollsPage() {
                     </div>
                 )}
             </div>
-
-            <style>{`
-                .outline-group .btn-outline-secondary {
-                    border-color: #9fa6ad;
-                    color: #6a737c;
-                }
-                .outline-group .btn-outline-secondary:hover {
-                    background-color: #f8f9f9;
-                    color: #525960;
-                }
-                .outline-group .btn-outline-secondary.active {
-                    background-color: #e3e6e8;
-                    color: #3b4045;
-                    border-color: #9fa6ad;
-                }
-                .poll-card:hover {
-                    background-color: #f8f9f9;
-                }
-                .text-truncate-2 {
-                    display: -webkit-box;
-                    -webkit-line-clamp: 2;
-                    -webkit-box-orient: vertical;
-                    overflow: hidden;
-                }
-            `}</style>
         </div>
     );
 }

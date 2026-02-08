@@ -128,7 +128,6 @@ function CommunitiesPage() {
       {/* Empty State */}
       {!loading && !error && communities.length === 0 && (
         <div className="text-center py-5">
-          <div style={{ fontSize: '4rem' }} className="mb-3">🏘️</div>
           <h5 className="text-muted">No communities found</h5>
           {debouncedSearch ? (
             <p className="text-muted small">

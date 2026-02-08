@@ -767,7 +767,7 @@ function PollDetail() {
     // ========== LOADING STATE ==========
     if (pageState.loading) {
         return (
-            <div className="container-lg my-5" style={{ maxWidth: '800px' }}>
+            <div className="poll-detail py-4">
                 <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '400px' }}>
                     <div className="text-center">
                         <div className="spinner-border text-primary mb-3" role="status">
@@ -783,7 +783,7 @@ function PollDetail() {
     // ========== ERROR STATE ==========
     if (pageState.error || !pageState.poll) {
         return (
-            <div className="container-lg my-5" style={{ maxWidth: '800px' }}>
+            <div className="poll-detail py-4">
                 <button
                     className="btn btn-outline-primary mb-3"
                     onClick={() => navigate('/articles')}
@@ -827,7 +827,7 @@ function PollDetail() {
     };
 
     return (
-        <div className="container-lg my-4" style={{ maxWidth: '800px' }}>
+        <div className="poll-detail py-4">
             {/* Back Button */}
             <button
                 className="btn btn-link text-decoration-none p-0 mb-4 text-muted"

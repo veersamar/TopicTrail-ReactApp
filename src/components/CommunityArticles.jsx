@@ -103,7 +103,6 @@ function CommunityArticles({ communityId, isMember = false }) {
       {/* Articles List */}
       {articles.length === 0 ? (
         <div className="text-center py-5 text-muted">
-          <div className="mb-3" style={{ fontSize: '3rem' }}>📝</div>
           <p>No articles in this community yet.</p>
           {isMember && (
             <Link 

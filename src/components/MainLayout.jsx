@@ -3,17 +3,36 @@ import { Outlet, useNavigate, useLocation, matchPath } from 'react-router-dom';
 import Navbar from './Navigation';
 import LeftSidebar from './LeftSidebar';
 import TrendingSidebar from './TrendingSidebar';
+import { AppShell, PageContainer, ContentLayout } from './layout';
 
 function MainLayout() {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Check if we are on the Article Detail page
-    // We want to hide sidebars ONLY for the view page, not feed or create
+    // Check page types for layout decisions
     const isArticleView = matchPath('/articles/:id', location.pathname);
+    const isPollView = matchPath('/poll/:id', location.pathname);
+    const isProfileView = matchPath('/profile', location.pathname);
+    const isCommunityDetail = matchPath('/communities/:slug', location.pathname) && 
+                               !matchPath('/communities/create', location.pathname);
 
     // Focus Mode state (controlled by children, e.g., CreateArticlePage)
     const [isFocusMode, setIsFocusMode] = React.useState(false);
+
+    // Determine if we should show sidebars
+    // Hide sidebars for detail/view pages and focus mode (create/edit)
+    const isDetailView = isArticleView || isPollView || isProfileView || isCommunityDetail;
+    const hideSidebars = isDetailView || isFocusMode;
+
+    // Determine container size:
+    // - Detail views (article, poll, profile, community): 'lg' (1024px) - centered with room for content
+    // - Focus mode (create/edit): '2xl' (1536px) - wide for forms with two-column layout
+    // - Normal with sidebars: '2xl' (uses full width, sidebars handle spacing)
+    const getContainerSize = () => {
+        if (isDetailView) return 'lg';
+        if (isFocusMode) return '2xl';
+        return '2xl';
+    };
 
     const handleCreateClick = (type) => {
         if (type === 'question') {
@@ -26,32 +45,17 @@ function MainLayout() {
     };
 
     return (
-        <div className="d-flex flex-column min-vh-100 bg-body">
-            <Navbar onCreateClick={handleCreateClick} />
-
-            <div className={`container-lg my-0 flex-grow-1 ${isArticleView || isFocusMode ? 'px-0' : ''}`}>
-                <div className="d-flex justify-content-between pt-4">
-                    {/* Left Sidebar - Hide on Article View OR Focus Mode */}
-                    {!isArticleView && !isFocusMode && (
-                        <aside className="d-none d-md-block pe-3 border-end" style={{ width: 'var(--sidebar-width)', flexShrink: 0 }}>
-                            <LeftSidebar />
-                        </aside>
-                    )}
-
-                    {/* Main Content */}
-                    <main className="flex-grow-1 px-md-4" style={{ minWidth: 0 }}>
-                        <Outlet context={{ setIsFocusMode, isFocusMode }} />
-                    </main>
-
-                    {/* Right Sidebar - Hide on Article View OR Focus Mode */}
-                    {!isArticleView && !isFocusMode && (
-                        <aside className="d-none d-lg-block ps-3" style={{ width: 'var(--rightbar-width)', flexShrink: 0 }}>
-                            <TrendingSidebar />
-                        </aside>
-                    )}
-                </div>
-            </div>
-        </div>
+        <AppShell header={<Navbar onCreateClick={handleCreateClick} />}>
+            <PageContainer size={getContainerSize()}>
+                <ContentLayout
+                    sidebar={!hideSidebars && <LeftSidebar />}
+                    aside={!hideSidebars && <TrendingSidebar />}
+                    hideSidebars={hideSidebars}
+                >
+                    <Outlet context={{ setIsFocusMode, isFocusMode }} />
+                </ContentLayout>
+            </PageContainer>
+        </AppShell>
     );
 }
 

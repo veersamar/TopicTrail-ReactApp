@@ -59,6 +59,14 @@ function LeftSidebar() {
 
                 <li>
                     <Link 
+                        to="/communities" 
+                        className={`d-block px-3 py-2 text-decoration-none small ${location.pathname === '/communities' || location.pathname.startsWith('/communities/') ? 'fw-bold text-dark bg-light' : 'text-secondary'}`}
+                    >
+                        🏘️ Communities
+                    </Link>
+                </li>
+                <li>
+                    <Link 
                         to="/tags" 
                         className={`d-block px-3 py-2 text-decoration-none small ${location.pathname === '/tags' ? 'fw-bold text-dark bg-light' : 'text-secondary'}`}
                     >

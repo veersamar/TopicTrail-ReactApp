@@ -113,6 +113,8 @@ function CreateArticlePage() {
     const [searchParams] = useSearchParams();
     // In edit mode, type is derived from the article, but initially fallback to param or post
     const [articleTypeParam, setArticleTypeParam] = useState(searchParams.get('type') || 'post');
+    // Community ID for posting to a specific community
+    const communityIdParam = searchParams.get('communityId');
 
     // Note: Focus Mode context removed as right sidebar was removed per design spec
     // The page now uses a simplified two-column layout (META panel + Content area)
@@ -959,7 +961,7 @@ function CreateArticlePage() {
                 articleId = parseInt(id, 10);
             } else {
                 result = await api.createArticle(token, userId, articleData);
-                articleId = result.id || result.articleId;
+                articleId = result.id || result.articleId || result.Id || result.ArticleId;
             }
 
             if (!result.success) {
@@ -969,6 +971,16 @@ function CreateArticlePage() {
                     errors: { submit: result.error || 'Failed to save article' }
                 }));
                 return;
+            }
+
+            // Link article to community if creating within a community
+            if (!isEditMode && communityIdParam && articleId) {
+                console.log('Linking article to community:', communityIdParam, articleId);
+                const linkResult = await api.addArticleToCommunity(token, communityIdParam, articleId, userId);
+                if (!linkResult.success) {
+                    console.error('Failed to link article to community:', linkResult.error);
+                    // Article is created but not linked - show warning but don't fail
+                }
             }
 
             // Phase 2: Upload pending attachments

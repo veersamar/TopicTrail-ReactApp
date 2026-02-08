@@ -224,7 +224,7 @@ export const api = {
 
   createArticle: async (token, userId, data) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/article/createarticle?userId=${userId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/Article?userId=${userId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1434,6 +1434,384 @@ export const api = {
     } catch (error) {
       console.error('Error checking user vote:', error);
       return { hasVoted: false };
+    }
+  },
+
+  // ==================== COMMUNITY ENDPOINTS ====================
+
+  /**
+   * Get all communities with optional search and pagination
+   * @param {string} token - Auth token
+   * @param {object} params - Query params { search, pageNumber, pageSize }
+   * @returns {Promise<{success: boolean, communities: Array, totalCount: number}>}
+   */
+  getCommunities: async (token, params = {}) => {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params.search) queryParams.append('search', params.search);
+      if (params.pageNumber) queryParams.append('pageNumber', params.pageNumber);
+      if (params.pageSize) queryParams.append('pageSize', params.pageSize);
+      
+      const queryString = queryParams.toString();
+      const url = `${API_BASE_URL}/api/communities${queryString ? `?${queryString}` : ''}`;
+      
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await handleResponse(res);
+      
+      // Handle PascalCase response from API: { Communities: [...], TotalCount: n }
+      const communities = data.Communities || data.communities || data.data || (Array.isArray(data) ? data : []);
+      
+      return {
+        success: true,
+        communities: Array.isArray(communities) ? communities : [],
+        totalCount: data.TotalCount || data.totalCount || (Array.isArray(communities) ? communities.length : 0),
+      };
+    } catch (error) {
+      console.error('Error fetching communities:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch communities',
+        communities: [],
+      };
+    }
+  },
+
+  /**
+   * Get a single community by slug or ID
+   * @param {string} token - Auth token
+   * @param {string} slugOrId - Community slug or ID
+   * @returns {Promise<{success: boolean, community: object}>}
+   */
+  getCommunityBySlug: async (token, slugOrId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/communities/${slugOrId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await handleResponse(res);
+      
+      return {
+        success: true,
+        community: data.community || data.data || data,
+      };
+    } catch (error) {
+      console.error('Error fetching community:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch community',
+        community: null,
+      };
+    }
+  },
+
+  /**
+   * Create a new community
+   * @param {string} token - Auth token
+   * @param {object} communityData - { name, description, isPublic }
+   * @returns {Promise<{success: boolean, community: object}>}
+   */
+  createCommunity: async (token, communityData) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/communities`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(communityData),
+      });
+      const data = await handleResponse(res);
+      
+      return {
+        success: true,
+        community: data.community || data.data || data,
+      };
+    } catch (error) {
+      console.error('Error creating community:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to create community',
+      };
+    }
+  },
+
+  /**
+   * Update a community
+   * @param {string} token - Auth token
+   * @param {string|number} communityId - Community ID
+   * @param {object} communityData - { name, description, isPublic }
+   * @returns {Promise<{success: boolean, community: object}>}
+   */
+  updateCommunity: async (token, communityId, communityData) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/communities/${communityId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(communityData),
+      });
+      const data = await handleResponse(res);
+      
+      return {
+        success: true,
+        community: data.community || data.data || data,
+      };
+    } catch (error) {
+      console.error('Error updating community:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to update community',
+      };
+    }
+  },
+
+  /**
+   * Delete a community
+   * @param {string} token - Auth token
+   * @param {string|number} communityId - Community ID
+   * @returns {Promise<{success: boolean}>}
+   */
+  deleteCommunity: async (token, communityId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/communities/${communityId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await handleResponse(res);
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting community:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to delete community',
+      };
+    }
+  },
+
+  /**
+   * Join a community
+   * @param {string} token - Auth token
+   * @param {string|number} communityId - Community ID
+   * @returns {Promise<{success: boolean}>}
+   */
+  joinCommunity: async (token, communityId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/communities/${communityId}/join`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await handleResponse(res);
+      
+      return {
+        success: true,
+        ...data,
+      };
+    } catch (error) {
+      console.error('Error joining community:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to join community',
+      };
+    }
+  },
+
+  /**
+   * Leave a community
+   * @param {string} token - Auth token
+   * @param {string|number} communityId - Community ID
+   * @returns {Promise<{success: boolean}>}
+   */
+  leaveCommunity: async (token, communityId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/communities/${communityId}/leave`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await handleResponse(res);
+      
+      return {
+        success: true,
+        ...data,
+      };
+    } catch (error) {
+      console.error('Error leaving community:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to leave community',
+      };
+    }
+  },
+
+  /**
+   * Get community members
+   * @param {string} token - Auth token
+   * @param {string|number} communityId - Community ID
+   * @param {object} params - { pageNumber, pageSize }
+   * @returns {Promise<{success: boolean, members: Array}>}
+   */
+  getCommunityMembers: async (token, communityId, params = {}) => {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params.pageNumber) queryParams.append('pageNumber', params.pageNumber);
+      if (params.pageSize) queryParams.append('pageSize', params.pageSize);
+      
+      const queryString = queryParams.toString();
+      const url = `${API_BASE_URL}/api/communities/${communityId}/members${queryString ? `?${queryString}` : ''}`;
+      
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await handleResponse(res);
+      
+      // Handle PascalCase response from API: { Members: [...], TotalMembers: n }
+      const members = data.Members || data.members || data.data || (Array.isArray(data) ? data : []);
+      
+      return {
+        success: true,
+        members: Array.isArray(members) ? members : [],
+        totalCount: data.TotalMembers || data.totalMembers || data.TotalCount || data.totalCount || (Array.isArray(members) ? members.length : 0),
+      };
+    } catch (error) {
+      console.error('Error fetching community members:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch members',
+        members: [],
+      };
+    }
+  },
+
+  /**
+   * Get articles in a community
+   * @param {string} token - Auth token
+   * @param {string|number} communityId - Community ID
+   * @param {object} params - { pageNumber, pageSize }
+   * @returns {Promise<{success: boolean, articles: Array}>}
+   */
+  getCommunityArticles: async (token, communityId, params = {}) => {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params.pageNumber) queryParams.append('pageNumber', params.pageNumber);
+      if (params.pageSize) queryParams.append('pageSize', params.pageSize);
+      
+      const queryString = queryParams.toString();
+      const url = `${API_BASE_URL}/api/communities/${communityId}/articles${queryString ? `?${queryString}` : ''}`;
+      
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await handleResponse(res);
+      
+      // API returns Posts (PascalCase) - extract and normalize
+      const posts = data.Posts || data.posts || data.articles || data.data || [];
+      
+      return {
+        success: true,
+        articles: posts,
+        totalCount: data.TotalPosts || data.totalPosts || data.totalCount || data.TotalCount || posts.length,
+      };
+    } catch (error) {
+      console.error('Error fetching community articles:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch articles',
+        articles: [],
+      };
+    }
+  },
+
+  /**
+   * Add an article to a community (link existing article)
+   * POST /api/communities/{id}/articles/{articleId}?userId={userId}
+   * @param {string} token - Auth token
+   * @param {string|number} communityId - Community ID
+   * @param {string|number} articleId - Article ID to link
+   * @param {string|number} userId - User ID
+   * @returns {Promise<{success: boolean}>}
+   */
+  addArticleToCommunity: async (token, communityId, articleId, userId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/communities/${communityId}/articles/${articleId}?userId=${userId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await handleResponse(res);
+      
+      return {
+        success: true,
+        ...data,
+      };
+    } catch (error) {
+      console.error('Error adding article to community:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to add article to community',
+      };
+    }
+  },
+
+  /**
+   * Update a member's role in the community
+   * @param {string} token - Auth token
+   * @param {string|number} communityId - Community ID
+   * @param {string|number} memberId - Member user ID
+   * @param {string} role - New role (Admin, Moderator, Member)
+   * @returns {Promise<{success: boolean}>}
+   */
+  updateMemberRole: async (token, communityId, memberId, role) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/communities/${communityId}/members/${memberId}/role`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ role }),
+      });
+      const data = await handleResponse(res);
+      
+      return {
+        success: true,
+        ...data,
+      };
+    } catch (error) {
+      console.error('Error updating member role:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to update member role',
+      };
+    }
+  },
+
+  /**
+   * Remove a member from the community
+   * @param {string} token - Auth token
+   * @param {string|number} communityId - Community ID
+   * @param {string|number} memberId - Member user ID
+   * @returns {Promise<{success: boolean}>}
+   */
+  removeCommunityMember: async (token, communityId, memberId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/communities/${communityId}/members/${memberId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await handleResponse(res);
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error removing member:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to remove member',
+      };
     }
   },
 };

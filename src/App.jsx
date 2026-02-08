@@ -15,6 +15,9 @@ import CreateArticlePage from './pages/CreateArticlePage';
 import CreateQuestionPage from './pages/CreateQuestionPage';
 import CreatePollPage from './pages/CreatePollPage';
 import PollsPage from './pages/PollsPage';
+import CommunitiesPage from './pages/CommunitiesPage';
+import CommunityDetailPage from './pages/CommunityDetailPage';
+import CreateCommunityPage from './pages/CreateCommunityPage';
 
 // Components
 import MainLayout from './components/MainLayout';
@@ -99,6 +102,9 @@ function AppContent() {
         <Route path="/create-poll" element={<CreatePollPage />} />
         <Route path="/edit-article/:id" element={<CreateArticlePage />} />
         <Route path="/tags" element={<TagsPage />} />
+        <Route path="/communities" element={<CommunitiesPage />} />
+        <Route path="/communities/create" element={<CreateCommunityPage />} />
+        <Route path="/communities/:slug" element={<CommunityDetailPage />} />
         <Route path="/users" element={<div className="p-4">Users (Coming Soon)</div>} />
         <Route path="/settings" element={
           <div className="container-lg my-5">

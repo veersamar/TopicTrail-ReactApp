@@ -88,11 +88,6 @@ function Navigation({ onCreateClick }) {
           {/* Nav Links */}
           <ul className="nav-links">
             <li>
-              <Link to="/articles" className="nav-link" onClick={() => setIsMenuOpen(false)}>
-                Feed
-              </Link>
-            </li>
-            <li>
               <Link to="/my-articles" className="nav-link" onClick={() => setIsMenuOpen(false)}>
                 My Articles
               </Link>

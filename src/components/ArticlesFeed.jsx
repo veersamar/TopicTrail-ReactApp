@@ -95,6 +95,18 @@ function ArticlesFeed() {
     return type ? `${type.name || type.Name}s` : 'Articles';
   };
 
+  const getItemLabel = () => {
+    if (isMyArticles) return 'articles';
+    if (tagFilter) return 'articles';
+    if (!typeFilter) return 'articles';
+    const type = articleTypes.find(t => (t.name || t.Name || '').toLowerCase() === typeFilter.toLowerCase());
+    if (type) {
+      const typeName = (type.name || type.Name || '').toLowerCase();
+      return filteredArticles.length === 1 ? typeName : `${typeName}s`;
+    }
+    return 'articles';
+  };
+
   if (loading) {
     return (
       <div className="center py-12">
@@ -118,7 +130,7 @@ function ArticlesFeed() {
       <PageHeader title={getPageTitle()} />
 
       <div className="feed__toolbar">
-        <span className="text-sm text-secondary">{filteredArticles.length} items</span>
+        <span className="text-sm text-secondary">{filteredArticles.length} {getItemLabel()}</span>
 
         <div className="btn-group">
           {filterButtons.map(({ key, label }) => (

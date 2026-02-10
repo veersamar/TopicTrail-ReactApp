@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { Card, Button, Spinner } from './ui';
+import { Card, Spinner } from './ui';
 
 function TrendingSidebar() {
   const { token } = useAuth();
   const [trending, setTrending] = useState([]);
+  const [trendingPosts, setTrendingPosts] = useState([]);
   const [polls, setPolls] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [postsLoading, setPostsLoading] = useState(true);
   const [pollsLoading, setPollsLoading] = useState(true);
 
   useEffect(() => {
@@ -24,6 +26,23 @@ function TrendingSidebar() {
     };
     fetchData();
   }, []);
+
+  useEffect(() => {
+    const fetchTrendingPosts = async () => {
+      setPostsLoading(true);
+      try {
+        // Fetch posts (articleTypeId 13 = Post)
+        const postsData = await api.getArticlesByType(token, 13, 1, 5);
+        setTrendingPosts(Array.isArray(postsData) ? postsData : []);
+      } catch (e) {
+        console.log("Failed to fetch trending posts", e);
+        setTrendingPosts([]);
+      } finally {
+        setPostsLoading(false);
+      }
+    };
+    fetchTrendingPosts();
+  }, [token]);
 
   useEffect(() => {
     const fetchPolls = async () => {
@@ -52,21 +71,34 @@ function TrendingSidebar() {
 
   return (
     <aside className="stack stack--md">
-      {/* Blog Widget */}
+      {/* Trending Posts Widget */}
       <Card className="sidebar-widget sidebar-widget--featured">
         <div className="sidebar-widget__header">
-          <h4 className="heading-small">The TopicTrail Blog</h4>
+          <h4 className="heading-small">Trending Posts</h4>
+          <Link to="/articles" className="text-sm link">View All</Link>
         </div>
-        <ul className="sidebar-list">
-          <li className="sidebar-list__item">
-            <span className="sidebar-list__bullet"></span>
-            <span className="text-sm text-secondary">Observability in 2025: What you need to know</span>
-          </li>
-          <li className="sidebar-list__item">
-            <span className="sidebar-list__bullet"></span>
-            <span className="text-sm text-secondary">Podcast: How to build a better developer experience</span>
-          </li>
-        </ul>
+        {postsLoading ? (
+          <div className="center py-4">
+            <Spinner size="sm" />
+          </div>
+        ) : (
+          <ul className="sidebar-list">
+            {trendingPosts.slice(0, 5).map((post, idx) => (
+              <li key={post.id || post.Id || idx}>
+                <Link to={getArticleLink(post)} className="sidebar-list__link">
+                  <span className="text-sm line-clamp-2">
+                    {post.title || post.Title}
+                  </span>
+                </Link>
+              </li>
+            ))}
+            {trendingPosts.length === 0 && (
+              <li className="sidebar-list__empty">
+                <span className="text-sm text-secondary">No trending posts yet.</span>
+              </li>
+            )}
+          </ul>
+        )}
       </Card>
 
       {/* Latest Polls Widget */}
@@ -132,19 +164,6 @@ function TrendingSidebar() {
             )}
           </ul>
         )}
-      </Card>
-
-      {/* Custom Filters Widget */}
-      <Card className="sidebar-widget">
-        <div className="sidebar-widget__header">
-          <h4 className="heading-small">Custom Filters</h4>
-          <button className="text-sm link">Edit</button>
-        </div>
-        <div className="p-3 text-center">
-          <Button variant="secondary" size="sm" className="w-full">
-            Create a custom filter
-          </Button>
-        </div>
       </Card>
     </aside>
   );

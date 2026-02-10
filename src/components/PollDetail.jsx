@@ -436,8 +436,8 @@ function PollDetail() {
         const options = question.options || question.Options || [];
         const minScale = question.minScale || question.MinScale || 1;
         const maxScale = question.maxScale || question.MaxScale || 5;
-        const lowLabel = question.lowLabel || question.LowLabel || '';
-        const highLabel = question.highLabel || question.HighLabel || '';
+        const lowLabel = question.lowLabel || question.LowLabel || question.ratingLowLabel || question.RatingLowLabel || question.minLabel || question.MinLabel || '';
+        const highLabel = question.highLabel || question.HighLabel || question.ratingHighLabel || question.RatingHighLabel || question.maxLabel || question.MaxLabel || '';
 
         const isDisabled = pageState.hasVoted && !pageState.poll?.allowVoteChange;
         const answer = userAnswers[qId] || {};
@@ -562,14 +562,6 @@ function PollDetail() {
                                 </span>
                             )}
                         </div>
-                        
-                        {/* Fallback labels if no custom labels provided */}
-                        {!lowLabel && !highLabel && (
-                            <div className="d-flex justify-content-between mt-2 text-muted small">
-                                <span>{minScale} - Low</span>
-                                <span>{maxScale} - High</span>
-                            </div>
-                        )}
                     </div>
                 )}
 
